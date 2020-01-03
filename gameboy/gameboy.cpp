@@ -11,6 +11,10 @@ GameBoy::GameBoy(Window* _window)
     cpu.mmu = &mmu;
     ppu.init(&mmu);
 	cpu.reset();
+
+    viewport = sf::Sprite(ppu.frame_buffer);
+    viewport.setScale(3.5, 3.5);
+    viewport.setPosition(10, 0);
 }
 
 ref<Cartridge> GameBoy::load_rom(const std::string& file)
@@ -39,7 +43,7 @@ void GameBoy::boot(const std::string& boot)
 
 void GameBoy::cpu_stats()
 {
-	ImGui::Begin("CPU-Info");
+	/*ImGui::Begin("CPU-Info");
 	ImGui::Text("N: %d Z: %d H: %d C: %d",
 		cpu.get_flag(N),
 		cpu.get_flag(Z),
@@ -55,12 +59,12 @@ void GameBoy::cpu_stats()
 	ImGui::Text("Opcode: %s", to_hex(cpu.opcode).c_str());
 	ImGui::NewLine();
 	ImGui::Text("Instuction: %s", cpu.lookup[cpu.opcode].name.c_str());
-	ImGui::End();
+	ImGui::End();*/
 }
 
 void GameBoy::memory_map(uint16_t from, uint16_t to, uint8_t step)
 {
-    ImGui::Begin("Memory");
+    /*ImGui::Begin("Memory");
 
     std::string line = "";
     for (int i = from; i <= to; i++) {
@@ -73,7 +77,7 @@ void GameBoy::memory_map(uint16_t from, uint16_t to, uint8_t step)
         line += std::to_string(mmu.read(i)) + ' ';
     }
 
-    ImGui::End();
+    ImGui::End();*/
 }
 
 void GameBoy::tick()
@@ -82,10 +86,10 @@ void GameBoy::tick()
 
     while (cycles < cycles_per_frame)
     {
-        auto cycle = cpu.tick();
-        cycles += cycle;
-
         cpu.handle_interupts();
+        auto cycle = cpu.tick();
+        
+        cycles += cycle;
         cpu.update_timers(cycle);
 
         ppu.tick(cycle);

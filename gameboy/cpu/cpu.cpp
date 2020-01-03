@@ -122,6 +122,9 @@ void CPU::reset()
 
 uint32_t CPU::tick()
 {    
+    if (halted == true) return 1;
+    if (pc == 0x00FA) { pc = 0x00FC; gate = true; std::cout << "Start!\n"; } // Bypass nintendo check
+
     opcode = mmu->read(pc++);  // Fetch
 
     if (opcode == 0xCB) {  // Handle 0xCB prefix
@@ -177,15 +180,17 @@ void CPU::interupt(uint32_t id)
     uint8_t req = mmu->read(INTERUPT_FLAG); // Get the interupts flag
     set_bit(req, id, 1); // Enable the appropriate interupt
     mmu->write(INTERUPT_FLAG, req); // Write it to memory
+
+    halted = false;
 }
 
 void CPU::handle_interupts()
-{
+{   
     if (interupts_enabled) { // Is IME enabled?
         uint8_t req = mmu->read(INTERUPT_FLAG);
         uint8_t enabled = mmu->read(INTERUPT_ENABLE);
-        
-        if (req > 0) { // If there are any pending interupts
+
+        if (req > 0) { // If there are any pending interupts            
             for (int i = 0; i < 5; i++) { // Handle them in the order of priority
                 if (get_bit(req, i) && get_bit(enabled, i)) { // If the interupt is enabled and is requested
                     interupts_enabled = false; // Clear IME flag
@@ -220,17 +225,13 @@ int CPU::opcode01()
     uint8_t low = mmu->read(pc++);
     uint8_t high = mmu->read(pc++);
 
-    uint16_t data = combine(low, high);
-    bc = data;
-
+    bc = combine(low, high);
     return 0;
 }
 
 int CPU::opcode02()
 {
-    uint8_t a = af.h;
-    
-    mmu->write(bc.get(), a);
+    mmu->write(bc.get(), af.h);
     return 0;
 }
 
@@ -275,17 +276,14 @@ int CPU::opcode06()
 
 int CPU::opcode07()
 {
-    uint8_t a = af.h;
+    set_flag(C, get_bit(af.h, 7));
     
-    uint8_t carry_flag = get_bit(a, 7);    
-    uint8_t result = TU8((a << 1) | carry_flag);
+    af.h <<= 1;
+    set_bit(af.h, 0, get_flag(C));
 
-    set_flag(C, carry_flag);
-    set_flag(Z, (result == 0));
-    set_flag(H, 0);
+    set_flag(Z, 0);
     set_flag(N, 0);
-
-    af.h = result;
+    set_flag(H, 0);
 
     return 0;
 }
@@ -304,13 +302,14 @@ int CPU::opcode08()
 
 int CPU::opcode09()
 {
-    uint16_t result = hl.get() + bc.get();
-    bool half_carry = ((hl.get() ^ bc.get() ^ result) & 0x1000) == 0x1000;
+    uint32_t result = hl.get() + bc.get();
+    bool half_carry = (hl.get() & 0xfff) + (bc.get() & 0xfff) > 0xfff;
 
     set_flag(N, 0);
     set_flag(H, half_carry);
     set_flag(C, (result & 0x10000) != 0);
 
+    hl = TU16(result);
     return 0;
 }
 
@@ -330,16 +329,12 @@ int CPU::opcode0B()
 
 int CPU::opcode0C()
 {
-    uint8_t c = bc.l;
+    bc.l++;
+    bool half_carry = (bc.l & 0x0F) == 0x00;
     
-    uint8_t result = c + 1;
-    bool half_carry = ((c ^ 1 ^ result) & 0x10) == 0x10;
-    
-    set_flag(Z, (result == 0));
+    set_flag(Z, bc.l == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-
-    bc.l = result;
 
     return 0;
 }
@@ -366,20 +361,22 @@ int CPU::opcode0E()
 
 int CPU::opcode0F()
 {
-    uint8_t a = af.h;
-    uint8_t carry_flag = get_bit(a, 0);   
-    uint8_t result = TU8((a >> 1) | (carry_flag << 7));
+    bool carry = get_bit(af.h, 0);
+    af.h >>= 1;
 
-    set_flag(C, carry_flag);
-    set_flag(Z, (result == 0));
-    set_flag(H, 0);
+    set_flag(C, carry);
+    set_bit(af.h, 7, carry);
+
+    set_flag(Z, 0);
     set_flag(N, 0);
+    set_flag(H, 0);
 
     return 0;
 }
 
 int CPU::opcode10()
 {
+    halted = true;
     return 0;
 }
 
@@ -388,9 +385,7 @@ int CPU::opcode11()
     uint8_t low = mmu->read(pc++);
     uint8_t high = mmu->read(pc++);
 
-    uint16_t data = combine(low, high);
-    de = data;
-    
+    de = combine(low, high);
     return 0;
 }
 
@@ -408,16 +403,13 @@ int CPU::opcode13()
 
 int CPU::opcode14()
 {
-    uint8_t d = de.h;
+    de.h++;
+    bool half_carry = (de.h & 0x0F) == 0x00;
 
-    uint8_t result = d + 1;
-    bool half_carry = (result & 0x0F) == 0x00;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, de.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
 
-    de.h = result;
     return 0;
 }
 
@@ -444,13 +436,10 @@ int CPU::opcode16()
 int CPU::opcode17()
 {
     uint8_t carry = get_flag(C);
-    uint8_t a = af.h;
+    set_flag(C, get_bit(af.h, 7));
 
-    bool will_carry = get_bit(a, 7);
-    set_flag(C, will_carry);
-
-    uint8_t result = TU8(a << 1);
-    result |= carry;
+    af.h <<= 1;
+    set_bit(af.h, 0, carry);
 
     set_flag(N, 0);
     set_flag(Z, 0);
@@ -461,7 +450,7 @@ int CPU::opcode17()
 
 int CPU::opcode18()
 {
-    int8_t offset = static_cast<int8_t>(mmu->read(pc++));
+    int8_t offset = T8(mmu->read(pc++));
     pc += offset;
 
     return 0;
@@ -469,15 +458,14 @@ int CPU::opcode18()
 
 int CPU::opcode19()
 {
-    uint16_t result = hl.get() + de.get();
-    bool half_carry = ((hl.get() ^ de.get() ^ result) & 0x1000) == 0x1000;
+    uint32_t result = hl.get() + de.get();
+    bool half_carry = (hl.get() & 0xfff) + (de.get() & 0xfff) > 0xfff;
 
     set_flag(N, 0);
     set_flag(H, half_carry);
     set_flag(C, (result & 0x10000) != 0);
 
-    hl = result;
-
+    hl = TU16(result);
     return 0;
 }
 
@@ -497,17 +485,13 @@ int CPU::opcode1B()
 
 int CPU::opcode1C()
 {
-    uint8_t e = de.l;
+    de.l++;
+    bool half_carry = (de.l & 0x0F) == 0x00;
 
-    uint8_t result = e + 1;
-    bool half_carry = (result & 0x0F) == 0x00;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, de.l == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
 
-    de.l = result;
-    
     return 0;
 }
 
@@ -526,34 +510,31 @@ int CPU::opcode1D()
 int CPU::opcode1E()
 {
     uint8_t data = mmu->read(pc++);
-    de.h = data;
+    de.l = data;
 
     return 0;
 }
 
 int CPU::opcode1F()
 {
-    uint8_t carry = get_flag(C);
-    uint8_t a = af.h;
+    bool carry = get_flag(C);
+    set_flag(C, get_bit(af.h, 0));
 
-    bool will_carry = get_bit(a, 0);
-    set_flag(C, will_carry);
+    af.h >>= 1;
+    set_bit(af.h, 7, carry);
 
-    uint8_t result = TU8(a >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, 0);
     set_flag(N, 0);
     set_flag(H, 0);
 
-    return result;
+    return 0;
 }
 
 int CPU::opcode20()
 {
     if (!get_flag(Z)) {
-        int8_t r8 = static_cast<int8_t>(mmu->read(pc++));
-        pc += r8;
+        int8_t offset = T8(mmu->read(pc++));
+        pc += offset;
         
         return 1;
     }
@@ -566,9 +547,7 @@ int CPU::opcode21()
     uint8_t low = mmu->read(pc++);
     uint8_t high = mmu->read(pc++);
 
-    uint16_t data = combine(low, high);
-    hl = data;
-
+    hl = combine(low, high);
     return 0;
 }
 
@@ -621,19 +600,29 @@ int CPU::opcode26()
 
 int CPU::opcode27()
 {
-    uint8_t a = af.h;
-    
-    if (!get_flag(N)) { 
-        if (get_flag(C) || a > 0x99) { a += 0x60; set_flag(C, 1); }
-        if (get_flag(H) || (a & 0x0f) > 0x09) { a += 0x6; }
+    int a = af.h;
+    if (!get_flag(N)) {
+        if (get_flag(H) || (a & 0xF) > 9)       
+            a += 0x06;        
+
+        if (get_flag(C) || (a > 0x9F))        
+            a += 0x60;        
     }
-    else { 
-        if (get_flag(C)) { a -= 0x60; }
-        if (get_flag(H)) { a -= 0x6; }
+    else {
+        if (get_flag(H))       
+            a = (a - 0x06) & 0xFF;        
+
+        if (get_flag(C))        
+            a -= 0x60;       
     }
-    
-    set_flag(Z, (a == 0));
+
     set_flag(H, 0);
+    if ((a & 0x100) == 0x100)   
+        set_flag(C, 1);
+   
+    a &= 0xFF;
+    set_flag(Z, a == 0x00);
+    af.h = a;
 
     return 0;
 }
@@ -651,15 +640,14 @@ int CPU::opcode28()
 
 int CPU::opcode29()
 {
-    uint16_t result = hl.get() + hl.get();
-    bool half_carry = ((hl.get() ^ hl.get() ^ result) & 0x1000) == 0x1000;
+    uint32_t result = hl.get() + hl.get();
+    bool half_carry = (hl.get() & 0xfff) + (hl.get() & 0xfff) > 0xfff;
 
     set_flag(N, 0);
     set_flag(H, half_carry);
     set_flag(C, (result & 0x10000) != 0);
 
-    hl = result;
-
+    hl = TU16(result);
     return 0;
 }
 
@@ -679,16 +667,12 @@ int CPU::opcode2B()
 
 int CPU::opcode2C()
 {
-    uint8_t l = hl.l;
+    hl.l++;
+    bool half_carry = (hl.l & 0x0F) == 0x00;
 
-    uint8_t result = l + 1;
-    bool half_carry = ((l ^ 1 ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, hl.l == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-
-    hl.l = result;
 
     return 0;
 }
@@ -726,8 +710,8 @@ int CPU::opcode2F()
 int CPU::opcode30()
 {
     if (!get_flag(C)) {
-        int8_t r8 = static_cast<int8_t>(mmu->read(pc++));
-        pc += r8;
+        int8_t offset = T8(mmu->read(pc++));
+        pc += offset;
 
         return 1;
     }
@@ -740,9 +724,7 @@ int CPU::opcode31()
     uint8_t low = mmu->read(pc++);
     uint8_t high = mmu->read(pc++);
 
-    uint16_t data = combine(low, high);
-    sp = data;
-
+    sp = combine(low, high);
     return 0;
 }
 
@@ -773,14 +755,14 @@ int CPU::opcode34()
 
 int CPU::opcode35()
 {
-    uint8_t value = mmu->get(hl.get())--;
-    bool half_carry = (value & 0x0F) == 0x0F;
-
-    set_flag(Z, value == 0);
-    set_flag(N, 0);
-    set_flag(H, half_carry);
+    uint8_t value = mmu->read(hl.get());
+    uint8_t result = TU8(value - 1);
     
-    mmu->write(hl.get(), value);
+    mmu->write(hl.get(), result);
+
+    set_flag(Z, result == 0);
+    set_flag(N, 1);
+    set_flag(H, (result & 0x0F) == 0x0F);
 
     return 0;
 }
@@ -816,15 +798,14 @@ int CPU::opcode38()
 
 int CPU::opcode39()
 {
-    uint16_t result = hl.get() + sp;
-    bool half_carry = ((hl.get() ^ sp ^ result) & 0x1000) == 0x1000;
+    uint32_t result = hl.get() + sp;
+    bool half_carry = (hl.get() & 0xFFF) + (sp & 0xFFF) > 0xFFF;
 
     set_flag(N, 0);
     set_flag(H, half_carry);
     set_flag(C, (result & 0x10000) != 0);
 
-    hl = result;
-
+    hl = TU16(result);
     return 0;
 }
 
@@ -844,16 +825,13 @@ int CPU::opcode3B()
 
 int CPU::opcode3C()
 {
-    uint8_t a = af.h;
+    af.h++;
+    bool half_carry = (af.h & 0x0F) == 0x00;
 
-    uint8_t result = a + 1;
-    bool half_carry = ((a ^ 1 ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
 
-    af.h = result;
     return 0;
 }
 
@@ -872,7 +850,6 @@ int CPU::opcode3D()
 int CPU::opcode3E()
 {
     uint8_t data = mmu->read(pc++);
-
     af.h = data;
 
     return 0;
@@ -883,6 +860,7 @@ int CPU::opcode3F()
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, !get_flag(C));
+    
     return 0;
 }
 
@@ -1265,860 +1243,662 @@ int CPU::opcode7F()
 
 int CPU::opcode80()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
+    uint32_t result = af.h + bc.h;
+    bool half_carry = (af.h & 0xf) + (bc.h & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + b;
-    bool half_carry = ((a ^ b ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
-
-    af.h = TU8(result);
+    set_flag(C, (result & 0x100) != 0);
+    
     return 0;
 }
 
 int CPU::opcode81()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    uint32_t result = af.h + bc.l;
+    bool half_carry = (af.h & 0xf) + (bc.l & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + c;
-    bool half_carry = ((a ^ c ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode82()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    uint32_t result = af.h + de.h;
+    bool half_carry = (af.h & 0xf) + (de.h & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + d;
-    bool half_carry = ((a ^ d ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode83()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    uint32_t result = af.h + de.l;
+    bool half_carry = (af.h & 0xf) + (de.l & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + e;
-    bool half_carry = ((a ^ e ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode84()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    uint32_t result = af.h + hl.h;
+    bool half_carry = (af.h & 0xf) + (hl.h & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + h;
-    bool half_carry = ((a ^ h ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode85()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    uint32_t result = af.h + hl.l;
+    bool half_carry = (af.h & 0xf) + (hl.l & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + l;
-    bool half_carry = ((a ^ l ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode86()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    uint8_t value = mmu->read(hl.get());
+    uint32_t result = af.h + value;
+    bool half_carry = (af.h & 0xf) + (value & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint16_t result = a + val;
-    bool half_carry = ((a ^ val ^ TU8(result)) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode87()
 {
-    uint8_t a = af.h;
+    uint32_t result = af.h + af.h;
+    bool half_carry = (af.h & 0xf) + (af.h & 0xf) > 0xf;
+    af.h = TU8(result);
 
-    uint8_t result = a + a;
-    bool half_carry = ((a ^ a ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, (a > 127));
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = result;
     return 0;
 }
 
 int CPU::opcode88()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + bc.h + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (bc.h & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + b + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ b ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode89()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + bc.l + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (bc.l & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + c + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ c ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode8A()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + de.h + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (de.h & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + d + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ d ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode8B()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + de.l + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (de.l & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + e + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ e ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode8C()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + hl.h + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (hl.h & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + h + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ h ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode8D()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + hl.l + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (hl.l & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + l + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ l ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode8E()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    uint8_t value = mmu->read(hl.get());
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + value + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (value & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + val + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ val ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode8F()
 {
-    uint8_t a = af.h;
+    uint8_t carry = get_flag(C);
+    uint32_t result32 = af.h + af.h + carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) + (af.h & 0xf) + carry) > 0xf;
 
-    uint16_t result_full = a + a + get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a ^ a ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
+    set_flag(C, result32 > 0xff);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode90()
 {
-    uint8_t result = af.h - bc.h;
+    uint16_t result = af.h - bc.h;
+    bool half_carry = (af.h & 0xF) < (bc.h & 0xF);
 
-    bool half_carry = ((af.h & 0xf) - (bc.h & 0xf)) < 0;
-
-    set_flag(Z, af.h == 0);
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, af.h < bc.h);
+    set_flag(C, bc.h > af.h);
 
-    af.h = result;
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode91()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    uint16_t result = af.h - bc.l;
+    bool half_carry = (af.h & 0xF) < (bc.l & 0xF);
 
-    uint16_t result_full = a - c;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (c & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (c > a));
+    set_flag(C, bc.l > af.h);
 
-    af.h = result;
-
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode92()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    uint16_t result = af.h - de.h;
+    bool half_carry = (af.h & 0xF) < (de.h & 0xF);
 
-    uint16_t result_full = a - d;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (d & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (d > a));
+    set_flag(C, de.h > af.h);
 
-    af.h = result;
-
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode93()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    uint16_t result = af.h - de.l;
+    bool half_carry = (af.h & 0xF) < (de.l & 0xF);
 
-    uint16_t result_full = a - e;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (e & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (e > a));
+    set_flag(C, de.l > af.h);
 
-    af.h = result;
-
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode94()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    uint16_t result = af.h - hl.h;
+    bool half_carry = (af.h & 0xF) < (hl.h & 0xF);
 
-    uint16_t result_full = a - h;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (h & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (h > a));
+    set_flag(C, hl.h > af.h);
 
-    af.h = result;
-
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode95()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    uint16_t result = af.h - hl.l;
+    bool half_carry = (af.h & 0xF) < (hl.l & 0xF);
 
-    uint16_t result_full = a - l;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (l & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (l > a));
+    set_flag(C, hl.l > af.h);
 
-    af.h = result;
-
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode96()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    uint8_t value = mmu->read(hl.get());
+    uint16_t result = af.h - value;
+    bool half_carry = (af.h & 0xF) < (value & 0xF);
 
-    uint16_t result_full = a - val;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (val & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (val > a));
+    set_flag(C, value > af.h);
 
-    af.h = result;
-
+    af.h = TU8(result);
     return 0;
 }
 
 int CPU::opcode97()
 {
-    uint8_t a = af.h;
-
-    uint16_t result_full = 0;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = false;
-
-    set_flag(Z, (result == 0));
+    af.h = 0;
+    
+    set_flag(Z, 1);
     set_flag(N, 1);
-    set_flag(H, half_carry);
+    set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcode98()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - bc.h - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (bc.h & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - b - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (b & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode99()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - bc.l - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (bc.l & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - c - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (c & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode9A()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - de.h - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (de.h & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - d - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (d & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode9B()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - de.l - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (de.l & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - e - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (e & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode9C()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - hl.h - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (hl.h & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - h - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (h & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode9D()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - hl.l - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (hl.l & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - l - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (l & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode9E()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    uint8_t carry = get_flag(C);
+    uint8_t value = mmu->read(hl.get());
+    int32_t result32 = af.h - value - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (value & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - val - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (val & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcode9F()
 {
-    uint8_t a = af.h;
+    uint8_t carry = get_flag(C);
+    int32_t result32 = af.h - af.h - carry;
+    uint8_t result = TU8(result32);
+    bool half_carry = ((af.h & 0xf) - (af.h & 0xf) - carry) < 0;
 
-    uint16_t result_full = a - a - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (a & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
+    set_flag(C, result32 < 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
 
     af.h = result;
-
     return 0;
 }
 
 int CPU::opcodeA0()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
-    
-    uint8_t result = a & b;
+    af.h &= bc.h;
 
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA1()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    af.h &= bc.l;
 
-    uint8_t result = a & c;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA2()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    af.h &= de.h;
 
-    uint8_t result = a & d;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA3()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    af.h &= de.l;
 
-    uint8_t result = a & e;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA4()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    af.h &= hl.h;
 
-    uint8_t result = a & h;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA5()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    af.h &= hl.l;
 
-    uint8_t result = a & l;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA6()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    af.h &= mmu->read(hl.get());
 
-    uint8_t result = a & val;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA7()
 {
-    uint8_t a = af.h;
-    uint8_t result = a & a;
+    af.h &= af.h;
 
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA8()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
-    
-    uint8_t result = a ^ b;
+    af.h ^= bc.h;
 
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeA9()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    af.h ^= bc.l;
 
-    uint8_t result = a ^ c;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeAA()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    af.h ^= de.h;
 
-    uint8_t result = a ^ d;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeAB()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    af.h ^= de.l;
 
-    uint8_t result = a ^ e;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeAC()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    af.h ^= hl.h;
 
-    uint8_t result = a ^ h;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeAD()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    af.h ^= hl.l;
 
-    uint8_t result = a ^ l;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeAE()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    af.h ^= mmu->read(hl.get());
 
-    uint8_t result = a ^ val;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
@@ -2126,6 +1906,7 @@ int CPU::opcodeAE()
 int CPU::opcodeAF()
 {
     af.h = 0;
+
     set_flag(Z, 1);
     set_flag(N, 0);
     set_flag(H, 0);
@@ -2136,246 +1917,188 @@ int CPU::opcodeAF()
 
 int CPU::opcodeB0()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
+    af.h |= bc.h;
 
-    uint8_t result = a | b;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB1()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
+    af.h |= bc.l;
 
-    uint8_t result = a | c;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB2()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
+    af.h |= de.h;
 
-    uint8_t result = a | d;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB3()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
+    af.h |= de.l;
 
-    uint8_t result = a | e;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB4()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
+    af.h |= hl.h;
 
-    uint8_t result = a | h;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB5()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
+    af.h |= hl.l;
 
-    uint8_t result = a | l;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB6()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
+    af.h |= mmu->read(hl.get());
 
-    uint8_t result = a | val;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB7()
 {
-    uint8_t a = af.h;
-    uint8_t result = a | a;
+    af.h |= af.h;
 
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeB8()
 {
-    uint8_t a = af.h;
-    uint8_t b = bc.h;
-
-    uint8_t result = TU8(a - b);
-    bool half_carry = ((a & 0xF) - (b & 0xF)) < 0;
+    uint8_t result = af.h - bc.h;
+    bool half_carry = (af.h & 0xF) < (bc.h & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, b > a);
+    set_flag(C, bc.h > af.h);
 
     return 0;
 }
 
 int CPU::opcodeB9()
 {
-    uint8_t a = af.h;
-    uint8_t c = bc.l;
-
-    uint8_t result = TU8(a - c);
-    bool half_carry = ((a & 0xF) - (c & 0xF)) < 0;
+    uint8_t result = af.h - bc.l;
+    bool half_carry = (af.h & 0xF) < (bc.l & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, c > a);
+    set_flag(C, bc.l > af.h);
 
     return 0;
 }
 
 int CPU::opcodeBA()
 {
-    uint8_t a = af.h;
-    uint8_t d = de.h;
-
-    uint8_t result = TU8(a - d);
-    bool half_carry = ((a & 0xF) - (d & 0xF)) < 0;
+    uint8_t result = af.h - de.h;
+    bool half_carry = (af.h & 0xF) < (de.h & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, d > a);
+    set_flag(C, de.h > af.h);
 
     return 0;
 }
 
 int CPU::opcodeBB()
 {
-    uint8_t a = af.h;
-    uint8_t e = de.l;
-
-    uint8_t result = TU8(a - e);
-    bool half_carry = ((a & 0xF) - (e & 0xF)) < 0;
+    uint8_t result = af.h - de.l;
+    bool half_carry = (af.h & 0xF) < (de.l & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, e > a);
+    set_flag(C, de.l > af.h);
 
     return 0;
 }
 
 int CPU::opcodeBC()
 {
-    uint8_t a = af.h;
-    uint8_t h = hl.h;
-
-    uint8_t result = TU8(a - h);
-    bool half_carry = ((a & 0xF) - (h & 0xF)) < 0;
+    uint8_t result = af.h - hl.h;
+    bool half_carry = (af.h & 0xF) < (hl.h & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, h > a);
+    set_flag(C, hl.h > af.h);
 
     return 0;
 }
 
 int CPU::opcodeBD()
 {
-    uint8_t a = af.h;
-    uint8_t l = hl.l;
-
-    uint8_t result = TU8(a - l);
-    bool half_carry = ((a & 0xF) - (l & 0xF)) < 0;
+    uint8_t result = af.h - hl.l;
+    bool half_carry = (af.h & 0xF) < (hl.l & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, l > a);
+    set_flag(C, hl.l > af.h);
 
     return 0;
 }
 
 int CPU::opcodeBE()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(hl.get());
-
-    uint8_t result = TU8(a - val);
-    bool half_carry = ((a & 0xF) - (val & 0xF)) < 0;
+    uint8_t value = mmu->read(hl.get());
+    uint8_t result = af.h - value;
+    bool half_carry = (af.h & 0xF) < (value & 0xF);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, val > a);
+    set_flag(C, value > af.h);
 
     return 0;
 }
@@ -2425,7 +2148,7 @@ int CPU::opcodeC2()
         return 1;
     }
     
-    pc += 2;  return 0;
+    pc += 2; return 0;
 }
 
 int CPU::opcodeC3()
@@ -2468,18 +2191,17 @@ int CPU::opcodeC5()
 
 int CPU::opcodeC6()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(pc++);
+    uint8_t value = mmu->read(pc++);
+    uint32_t result = af.h + value;
 
-    uint16_t result = a + val;
-    bool half_carry = ((a ^ val ^ TU8(result)) & 0x10) == 0x10;
+    bool half_carry = (af.h & 0xF) + (value & 0xF) > 0xF;
+    af.h = TU8(result);
 
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result > 255);
+    set_flag(C, (result & 0x100) != 0);
 
-    af.h = TU8(result);
     return 0;
 }
 
@@ -2571,20 +2293,17 @@ int CPU::opcodeCD()
 
 int CPU::opcodeCE()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(pc++);
+    uint8_t value = mmu->read(pc++);
+    uint8_t carry = get_flag(C);
 
-    uint16_t result_full = a + val + get_flag(C);
-    uint8_t result = TU8(result_full);
+    uint32_t result = af.h + value + carry;
+    bool half_carry = ((af.h & 0xF) + (value & 0xF) + carry) > 0xF;
+    af.h = TU8(result);
 
-    bool half_carry = ((a ^ val ^ (uint8_t)get_flag(C) ^ result) & 0x10) == 0x10;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
-    set_flag(C, result_full > 255);
-
-    af.h = result;
+    set_flag(C, result > 0xff);
 
     return 0;
 }
@@ -2670,21 +2389,16 @@ int CPU::opcodeD5()
 
 int CPU::opcodeD6()
 {
-    uint8_t a = af.h;
     uint8_t val = mmu->read(pc++);
+    uint8_t result = af.h - val;
+    bool half_carry = (af.h & 0xF) < (val & 0xF);
 
-    uint16_t result_full = a - val;
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xF) - (val & 0xF)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, (val > a));
+    set_flag(C, val > af.h);
 
     af.h = result;
-
     return 0;
 }
 
@@ -2766,21 +2480,17 @@ int CPU::opcodeDD()
 
 int CPU::opcodeDE()
 {
-    uint8_t a = af.h;
-    uint8_t val = mmu->read(pc++);
+    bool carry = get_flag(C);
+    uint8_t value = mmu->read(pc++);
+    uint8_t result = af.h - value - carry;
+    bool half_carry = (af.h & 0xf) < (value & 0xf) + carry;
 
-    uint16_t result_full = a - val - get_flag(C);
-    uint8_t result = TU8(result_full);
-
-    bool half_carry = ((a & 0xf) - (val & 0xf) - get_flag(C)) < 0;
-
-    set_flag(Z, (result == 0));
+    set_flag(Z, result == 0);
     set_flag(N, 1);
     set_flag(H, half_carry);
-    set_flag(C, result_full < 0);
+    set_flag(C, af.h < value + carry);
 
     af.h = result;
-
     return 0;
 }
 
@@ -2841,15 +2551,14 @@ int CPU::opcodeE5()
 
 int CPU::opcodeE6()
 {
-    uint8_t a = af.h;
     uint8_t val = mmu->read(pc++);
+    af.h &= val;
 
-    uint8_t result = a & val;
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 1);
     set_flag(C, 0);
-    
+
     return 0;
 }
 
@@ -2864,19 +2573,18 @@ int CPU::opcodeE7()
 
 int CPU::opcodeE8()
 {
-    int8_t data = mmu->read(pc++);
-    int32_t result = static_cast<int>(sp + data);
+    int8_t data = T8(mmu->read(pc++));
+    uint16_t result = sp + data;
     
-    bool half_carry = ((sp ^ data ^ (result & 0xFFFF)) & 0x10) == 0x10;
-    bool carry = ((sp ^ data ^ (result & 0xFFFF)) & 0x100) == 0x100;
+    bool half_carry = (result & 0xF) < (sp & 0xF);
+    bool carry = (result & 0xFF) < (sp & 0xFF);
 
     set_flag(Z, 0);
     set_flag(N, 0);
     set_flag(H, half_carry);
     set_flag(C, carry);
 
-    sp = TU16(result);
-
+    sp = result;
     return 0;
 }
 
@@ -2888,8 +2596,8 @@ int CPU::opcodeE9()
 
 int CPU::opcodeEA()
 {
-    pc++; uint8_t low = mmu->read(pc);
-    pc++; uint8_t high = mmu->read(pc);
+    uint8_t low = mmu->read(pc++);
+    uint8_t high = mmu->read(pc++);
 
     uint16_t addr = combine(low, high);
     mmu->write(addr, af.h);
@@ -2914,11 +2622,10 @@ int CPU::opcodeED()
 
 int CPU::opcodeEE()
 {
-    uint8_t a = af.h;
     uint8_t val = mmu->read(pc++);
     
-    uint8_t result = a ^ val;
-    set_flag(Z, result == 0);
+    af.h ^= val;
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
@@ -2938,10 +2645,8 @@ int CPU::opcodeEF()
 int CPU::opcodeF0()
 {
     uint8_t offset = mmu->read(pc++);
-    uint16_t addr = 0xFF00 + offset;
-
-    uint8_t data = mmu->read(addr); 
-    af.h = data;
+    uint16_t addr = 0xFF00 + offset; 
+    af.h = mmu->read(addr);
 
     return 0;
 }
@@ -2952,16 +2657,15 @@ int CPU::opcodeF1()
     uint8_t high = mmu->read(sp++);
 
     af = combine(low, high);
-
+    af.l &= 0xF0;
+    
     return 0;
 }
 
 int CPU::opcodeF2()
 {
     uint16_t addr = 0xFF00 + bc.l;
-
-    uint8_t a = mmu->read(addr);
-    af.h = a;
+    af.h = mmu->read(addr);
 
     return 0;
 }
@@ -2987,17 +2691,13 @@ int CPU::opcodeF5()
 
 int CPU::opcodeF6()
 {
-    uint8_t a = af.h;
     uint8_t val = mmu->read(pc++);
+    af.h |= val;
 
-    uint8_t result = a | val;
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }
@@ -3013,23 +2713,21 @@ int CPU::opcodeF7()
 
 int CPU::opcodeF8()
 {
-    int8_t value = static_cast<int8_t>(mmu->read(pc++));
-    int32_t result = hl.get() + value;
+    int8_t value = T8(mmu->read(pc++));
+    uint16_t check = sp ^ value ^ ((sp + value) & 0xFFFF);
+    hl = sp + value;
 
     set_flag(Z, 0);
     set_flag(N, 0);
-    set_flag(H, ((hl.get() ^ value ^ (result & 0xFFFF)) & 0x10) == 0x10);
-    set_flag(C, ((hl.get() ^ value ^ (result & 0xFFFF)) & 0x100) == 0x100);
-
-    hl = TU16(result);
+    set_flag(H, (check & 0x10) == 0x10);
+    set_flag(C, (check & 0x100) == 0x100);
 
     return 0;
 }
 
 int CPU::opcodeF9()
 {
-    hl = sp;
-    
+    sp = hl.get();
     return 0;
 }
 
@@ -3039,9 +2737,7 @@ int CPU::opcodeFA()
     uint8_t high = mmu->read(pc++);
 
     uint16_t addr = combine(low, high);
-    uint8_t data = mmu->read(addr);
-    
-    af.h = data;
+    af.h = mmu->read(addr);
 
     return 0;
 }
@@ -3065,9 +2761,8 @@ int CPU::opcodeFD()
 int CPU::opcodeFE()
 {
     uint8_t val = mmu->read(pc++);
-
     uint8_t result = af.h - val;
-    bool half_carry = ((af.h & 0xf) - (val & 0xf)) < 0;
+    bool half_carry = (af.h & 0xf) < (val & 0xf);
 
     set_flag(Z, result == 0);
     set_flag(N, 1);
@@ -3088,592 +2783,440 @@ int CPU::opcodeFF()
 
 int CPU::opcodeCB00()
 {
-    uint8_t b = bc.h;
-    uint8_t carry = get_bit(b, 7);
-    
-    uint8_t result = TU8((b << 1) | carry);
+    bool carry = get_bit(bc.h, 7);
+    bc.h <<= 1; set_bit(bc.h, 0, carry);
 
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, bc.h == 0);
     set_flag(N, 0);
+    set_flag(H, 0);
+    set_flag(C, carry);
     
-    bc.h = result;
-
     return 0;
 }
 
 int CPU::opcodeCB01()
 {
-    uint8_t reg = bc.l;
-    uint8_t carry = get_bit(reg, 7);
+    bool carry = get_bit(bc.l, 7);
+    bc.l <<= 1; set_bit(bc.l, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, bc.l == 0);
     set_flag(N, 0);
-
-    bc.l = result;
+    set_flag(H, 0);
+    set_flag(C, carry);
 
     return 0;
 }
 
 int CPU::opcodeCB02()
 {
-    uint8_t reg = de.h;
-    uint8_t carry = get_bit(reg, 7);
+    bool carry = get_bit(de.h, 7);
+    de.h <<= 1; set_bit(de.h, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, de.h == 0);
     set_flag(N, 0);
-
-    de.h = result;
+    set_flag(H, 0);
+    set_flag(C, carry);
 
     return 0;
 }
 
 int CPU::opcodeCB03()
 {
-    uint8_t reg = de.l;
-    uint8_t carry = get_bit(reg, 7);
+    bool carry = get_bit(de.l, 7);
+    de.l <<= 1; set_bit(de.l, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, de.l == 0);
     set_flag(N, 0);
-
-    de.l = result;
+    set_flag(H, 0);
+    set_flag(C, carry);
 
     return 0;
 }
 
 int CPU::opcodeCB04()
 {
-    uint8_t reg = hl.h;
-    uint8_t carry = get_bit(reg, 7);
+    bool carry = get_bit(hl.h, 7);
+    hl.h <<= 1; set_bit(hl.h, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, hl.h == 0);
     set_flag(N, 0);
-
-    hl.h = result;
+    set_flag(H, 0);
+    set_flag(C, carry);
 
     return 0;
 }
 
 int CPU::opcodeCB05()
 {
-    uint8_t reg = hl.l;
-    uint8_t carry = get_bit(reg, 7);
+    bool carry = get_bit(hl.l, 7);
+    hl.l <<= 1; set_bit(hl.l, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, hl.l == 0);
     set_flag(N, 0);
-
-    hl.l = result;
+    set_flag(H, 0);
+    set_flag(C, carry);
 
     return 0;
 }
 
 int CPU::opcodeCB06()
 {
-    uint8_t reg = mmu->read(hl.get());
-    uint8_t carry = get_bit(reg, 7);
+    uint8_t value = mmu->read(hl.get());
+    bool carry = get_bit(value, 7);
+    value <<= 1; set_bit(value, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, value == 0);
     set_flag(N, 0);
+    set_flag(H, 0);
+    set_flag(C, carry);
 
-    mmu->write(hl.get(), reg);
-
+    mmu->write(hl.get(), value);
     return 0;
 }
 
 int CPU::opcodeCB07()
 {
-    uint8_t reg = af.h;
-    uint8_t carry = get_bit(reg, 7);
+    bool carry = get_bit(af.h, 7);
+    af.h <<= 1; set_bit(af.h, 0, carry);
 
-    uint8_t result = TU8((reg << 1) | carry);
-
-    set_flag(C, carry);
-    set_flag(Z, result == 0);
-    set_flag(H, 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
-
-    af.h = result;
+    set_flag(H, 0);
+    set_flag(C, carry);
 
     return 0;
 }
 
 int CPU::opcodeCB08()
 {
-    uint8_t reg = bc.h;
-    uint8_t carry = get_bit(reg, 0);    
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(bc.h, 0);
+    bc.h >>= 1; set_bit(bc.h, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, bc.h == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    bc.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB09()
 {
-    uint8_t reg = bc.l;
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(bc.l, 0);
+    bc.l >>= 1; set_bit(bc.l, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, bc.l == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    bc.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB0A()
 {
-    uint8_t reg = de.h;
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(de.h, 0);
+    de.h >>= 1; set_bit(de.h, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, de.h == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    de.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB0B()
 {
-    uint8_t reg = de.l;
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(de.l, 0);
+    de.l >>= 1; set_bit(de.l, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, de.l == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    de.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB0C()
 {
-    uint8_t reg = hl.h;
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(hl.h, 0);
+    hl.h >>= 1; set_bit(hl.h, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, hl.h == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    hl.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB0D()
 {
-    uint8_t reg = hl.l;
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(hl.l, 0);
+    hl.l >>= 1; set_bit(hl.l, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, hl.l == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    hl.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB0E()
 {
-    uint8_t reg = mmu->read(hl.get());
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t value = mmu->read(hl.get());
+    uint8_t carry = get_bit(value, 0);
+    value >>= 1; set_bit(value, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, value == 0);
     set_flag(H, 0);
     set_flag(N, 0);
 
-    mmu->write(hl.get(), result);
-
+    mmu->write(hl.get(), value);
     return 0;
 }
 
 int CPU::opcodeCB0F()
 {
-    uint8_t reg = af.h;
-    uint8_t carry = get_bit(reg, 0);
-    uint8_t result = TU8((reg >> 1) | (carry << 7));
+    uint8_t carry = get_bit(af.h, 0);
+    af.h >>= 1; set_bit(af.h, 7, carry);
 
     set_flag(C, carry);
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(H, 0);
     set_flag(N, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB10()
 {
-    uint8_t reg = bc.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(bc.h, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    bc.h <<= 1; set_bit(bc.h, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, bc.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    bc.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB11()
 {
-    uint8_t reg = bc.l;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(bc.l, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    bc.l <<= 1; set_bit(bc.l, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, bc.l == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    bc.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB12()
 {
-    uint8_t reg = de.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(de.h, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    de.h <<= 1; set_bit(de.h, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, de.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    de.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB13()
 {
-    uint8_t reg = de.l;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(de.l, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    de.l <<= 1; set_bit(de.l, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, de.l == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    de.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB14()
 {
-    uint8_t reg = hl.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(hl.h, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    hl.h <<= 1; set_bit(hl.h, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, hl.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    hl.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB15()
 {
-    uint8_t reg = hl.l;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(hl.l, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    hl.l <<= 1; set_bit(hl.l, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, hl.l == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    hl.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB16()
 {
-    uint8_t reg = mmu->read(hl.get());
+    uint8_t value = mmu->read(hl.get());
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(value, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    value <<= 1; set_bit(value, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, value == 0);
     set_flag(N, 0);
     set_flag(H, 0);
 
-    mmu->write(hl.get(), result);
-
+    mmu->write(hl.get(), value);
     return 0;
 }
 
 int CPU::opcodeCB17()
 {
-    uint8_t reg = af.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(af.h, 7));
 
-    bool will_carry = get_bit(reg, 7);
-    set_flag(C, will_carry);
+    af.h <<= 1; set_bit(af.h, 0, carry);
 
-    uint8_t result = TU8(reg << 1);
-    result |= carry;
-
-    set_flag(Z, result == 0);
-
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    af.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB18()
 {
-    uint8_t reg = bc.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(bc.h, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    bc.h >>= 1; set_bit(bc.h, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, bc.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
 
-    bc.h = result;
-    
     return 0;
 }
 
 int CPU::opcodeCB19()
 {
-    uint8_t reg = bc.l;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(bc.l, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    bc.l >>= 1; set_bit(bc.l, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, bc.l == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    bc.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB1A()
 {
-    uint8_t reg = de.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(de.h, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    de.h >>= 1; set_bit(de.h, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, de.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    de.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB1B()
 {
-    uint8_t reg = de.l;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(de.l, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    de.l >>= 1; set_bit(de.l, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, de.l == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    de.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB1C()
 {
-    uint8_t reg = hl.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(hl.h, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    hl.h >>= 1; set_bit(hl.h, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, hl.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    hl.h = result;
 
     return 0;
 }
 
 int CPU::opcodeCB1D()
 {
-    uint8_t reg = hl.l;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(hl.l, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    hl.l >>= 1; set_bit(hl.l, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, hl.l == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    hl.l = result;
 
     return 0;
 }
 
 int CPU::opcodeCB1E()
 {
-    uint8_t reg = mmu->read(hl.get());
+    uint8_t value = mmu->read(hl.get());
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(value, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    value >>= 1; set_bit(value, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, value == 0);
     set_flag(N, 0);
     set_flag(H, 0);
 
-    mmu->write(hl.get(), result);
-
+    mmu->write(hl.get(), value);
     return 0;
 }
 
 int CPU::opcodeCB1F()
 {
-    uint8_t reg = af.h;
     uint8_t carry = get_flag(C);
+    set_flag(C, get_bit(af.h, 0));
 
-    bool will_carry = get_bit(reg, 0);
-    set_flag(C, will_carry);
+    af.h >>= 1; set_bit(af.h, 7, carry);
 
-    uint8_t result = TU8(reg >> 1);
-    result |= (carry << 7);
-
-    set_flag(Z, result == 0);
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
-
-    af.h = result;
 
     return 0;
 }
@@ -5158,34 +4701,22 @@ int CPU::opcodeCB8C()
 
 int CPU::opcodeCB8D()
 {
-    uint8_t reg = hl.l;
-    int bit = 1;
-    set_bit(reg, bit, 0);
-
-    hl.l = reg;
-
+    set_bit(hl.l, 1, 0);
     return 0;
 }
 
 int CPU::opcodeCB8E()
 {
     uint8_t reg = mmu->read(hl.get());
-    int bit = 2;
-    set_bit(reg, bit, 0);
+    set_bit(reg, 1, 0);
 
     mmu->write(hl.get(), reg);
-
     return 0;
 }
 
 int CPU::opcodeCB8F()
 {
-    uint8_t reg = af.h;
-    int bit = 2;
-    set_bit(reg, bit, 0);
-
-    af.h = reg;
-
+    set_bit(af.h, 1, 0);
     return 0;
 }
 

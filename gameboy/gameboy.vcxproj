@@ -46,16 +46,16 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)binaries\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)binaries\$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)gameboy;$(SolutionDir)libraries\imgui\include;$(SolutionDir)libraries\sdl2\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)libraries\sdl2\lib\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)gameboy;$(SolutionDir)libraries\imgui\include;$(SolutionDir)libraries\sfml\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)libraries\sfml\lib\Debug;$(LibraryPath)</LibraryPath>
     <EnableClangTidyCodeAnalysis>false</EnableClangTidyCodeAnalysis>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)binaries\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)binaries\$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)gameboy;$(SolutionDir)libraries\imgui\include;$(SolutionDir)libraries\sdl2\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)libraries\sdl2\lib\Release;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)gameboy;$(SolutionDir)libraries\imgui\include;$(SolutionDir)libraries\sfml\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)libraries\sfml\lib\Release;$(LibraryPath)</LibraryPath>
     <EnableClangTidyCodeAnalysis>false</EnableClangTidyCodeAnalysis>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -69,7 +69,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>SDL2d.lib;opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>sfml-window-d.lib;sfml-system-d.lib;sfml-graphics-d.lib;opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
@@ -88,7 +88,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>SDL2.lib;opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>sfml-window.lib;sfml-system.lib;sfml-graphics.lib;opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
@@ -98,11 +98,6 @@
     <ClCompile Include="cpu\cpu.cpp" />
     <ClCompile Include="cpu\opcodes.cpp" />
     <ClCompile Include="gameboy.cpp" />
-    <ClCompile Include="imgui\imgui.cpp" />
-    <ClCompile Include="imgui\imgui_draw.cpp" />
-    <ClCompile Include="imgui\imgui_impl_opengl2.cpp" />
-    <ClCompile Include="imgui\imgui_impl_sdl.cpp" />
-    <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="video\ppu.cpp" />
     <ClCompile Include="video\window.cpp" />

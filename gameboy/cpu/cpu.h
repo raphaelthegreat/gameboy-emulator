@@ -13,9 +13,8 @@ std::string to_hex(uint16_t n);
 #define BIND(x) std::bind(x, this)
 
 #define TU8(x) static_cast<uint8_t>(x)
+#define T8(x) static_cast<int8_t>(x)
 #define TU16(x) static_cast<uint16_t>(x)
-
-#define C(t, x) static_cast<t>(x)
 
 using std::map;
 
@@ -137,5 +136,5 @@ public:
 
     bool halted = false;
     bool interupts_enabled = true;
-    bool gate = true;
+    bool gate = false;
 };

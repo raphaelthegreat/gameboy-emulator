@@ -1,7 +1,6 @@
 #pragma once
 #include <chrono>
 #include <vector>
-#include <imgui.h>
 
 #include <cpu/mmu.h>
 #include <video/ppu.h>
@@ -36,7 +35,8 @@ public:
 	CPU cpu;
 	PPU ppu;
 
+	sf::Sprite viewport;
 	uint32_t cycles = 0;
-	uint32_t previous = SDL_GetTicks();
+	uint32_t previous = 0;
 	bool frame_complete = true;
 };

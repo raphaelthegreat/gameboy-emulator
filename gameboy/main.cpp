@@ -16,6 +16,6 @@ void main()
 		window.update();				
 
 		gb.tick();
-		window.render(gb.ppu.frame_buffer);
+		window.render(gb.viewport);
 	}
 }

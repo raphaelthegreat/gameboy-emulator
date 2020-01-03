@@ -1,5 +1,6 @@
 #include "mmu.h"
 #include <cartridge/cartridge.h>
+#include <gameboy.h>
 
 #pragma warning(disable : 6385)
 #pragma warning(disable : 6386)
@@ -7,8 +8,9 @@
 uint8_t MMU::read(uint16_t addr)
 {
 	uint8_t data = 0x00;
-	
-	if (addr >= 0x0000 && addr <= 0x00FF && booting == true)
+	LCDMode mode = gb->ppu.mode;
+
+	if (addr >= 0x0000 && addr <= 0x00FF && booting)
 		data = bios[addr];
 	else if (addr >= 0x0000 && addr <= 0x3FFF)
 		data = cartridge->rom[addr];
@@ -37,8 +39,8 @@ uint8_t MMU::read(uint16_t addr)
 uint8_t& MMU::get(uint16_t addr)
 {
 	std::reference_wrapper<uint8_t> data = cartridge->rom[0];
-	
-	if (addr >= 0x0000 && addr <= 0x00FF && booting == true)
+
+	if (addr >= 0x0000 && addr <= 0x00FE && booting)
 		data = bios[addr];
 	else if (addr >= 0x0000 && addr <= 0x3FFF)
 		data = cartridge->rom[addr];
@@ -66,13 +68,27 @@ uint8_t& MMU::get(uint16_t addr)
 
 void MMU::write(uint16_t addr, uint8_t data)
 {
+	LCDMode mode = gb->ppu.mode;
+
+	if (addr == 0xFF42 && data == 0x81)
+		std::cout << read(0xFF41);
+
+	if (addr == 0xFF50)
+		booting = false;
+
+	if (addr >= 0x8000 && addr <= 0x9FFF && mode == DataTrans)
+		return;
+	if (addr >= 0xFE00 && addr <= 0xFE9F && mode != VBlank && mode != HBlank)
+		return;
+
 	if (addr == LY)
 		io[LY - 0xFF00] = 0;
 	if (addr == DMA)
 		dma_transfer(addr, data);
 	if (addr == DIV)
 		io[addr - 0xFF00] = 0;
-	else if (addr >= 0x8000 && addr <= 0x9FFF)
+
+	if (addr >= 0x8000 && addr <= 0x9FFF)
 		vram[addr - 0x8000] = data;
 	else if (addr >= 0xA000 && addr <= 0xBFFF)
 		cartridge->get_byte(addr - 0xA000);
@@ -98,7 +114,7 @@ void MMU::copy_bootrom(uint8_t* rom)
 
 void MMU::dma_transfer(uint16_t addr, uint8_t data)
 {
-	uint16_t address = data * 100;
+	uint16_t address = data << 8;
 	for (int i = 0; i < 160; i++) {
 		write(0xFE00 + i, read(address + i));
 	}

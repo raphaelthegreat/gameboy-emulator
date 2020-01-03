@@ -7,11 +7,8 @@
 void PPU::init(MMU* _mmu)
 {
 	mmu = _mmu;
-
-	surface = SDL_CreateRGBSurface(0, 160, 144, 32, 0, 0, 0, 0);
-	SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 255, 255, 255));
-
-	frame_buffer = SDL_CreateTextureFromSurface(mmu->gb->window->renderer, surface);
+	pixels.create(160, 144, sf::Color::White);
+	frame_buffer.loadFromImage(pixels);
 }
 
 void PPU::tick(uint32_t cycles)
@@ -107,9 +104,6 @@ bool PPU::lcd_enabled()
 
 void PPU::draw_tiles()
 {
-	uint16_t tile_data = 0;
-	uint16_t tile_map = 0;
-
 	uint8_t view_x = mmu->read(SCROLL_X);
 	uint8_t view_y = mmu->read(SCROLL_Y);
 
@@ -119,42 +113,103 @@ void PPU::draw_tiles()
 
 	// Select the tile data needed (we need to say if it signed or not)
 	bool tiledata_select = CPU::get_bit(lcd_control, 4);
-	tile_data = tiledata_select ? 0x8000 : 0x8800;
+	uint16_t tile_data = tiledata_select ? 0x8000 : 0x8800;
 	signed_data = !tiledata_select;
 
-	tile_map = CPU::get_bit(lcd_control, 3) ? 0x9C00 : 0x9800;
+	uint16_t tile_map = CPU::get_bit(lcd_control, 3) ? 0x9C00 : 0x9800;
 	uint8_t palette = mmu->read(BG_PALETTE_DATA);
 
-	for (int x = 0; x < 256; x++) {			
-		uint8_t offx = x + view_x;
+	for (int x = 0; x < 256; x++) {
 		uint8_t offy = scanline + view_y;
+		uint8_t offx = x + view_x;
+
+		uint8_t tilex = offx / 8, tiley = offy / 8;
+		uint8_t tilexc = offx % 8, tileyc = offy % 8;
 		
-		uint8_t offset = (offx / 8);
-		offset += offy % 8 == 0 ? (offy / 8 * 32) : 0;
+		uint16_t offset = ((tiley * 32) + tilex);
 
-		uint8_t tile_num = mmu->read(tile_map + offset);
-		uint8_t tile_x = offx % 8, tile_y = offy % 8;
-
-		uint8_t colorval;
-		if (signed_data) {
-
+		uint8_t tilen = mmu->read(tile_map + offset);
+		uint8_t colorval = 0;
+		if (tile_data == 0x8800) {
 		}
 		else {
-			uint8_t tile_addr = tile_data + (tile_num * 16) + (tile_y * 2);
-			
-			uint8_t bit1 = mmu->read(tile_addr) >> (7 - tile_x);
-			uint8_t bit2 = mmu->read(tile_addr + 1) >> (7 - tile_x);
+			uint16_t tileaddr = tile_data + (tilen * 16);
+			uint16_t tile_line = tileaddr + (tileyc * 2);
 
-			colorval = (bit2 << 1) | bit1;
+			uint8_t byte1 = mmu->read(tile_line);
+			uint8_t byte2 = mmu->read(tile_line + 1);
+
+			uint8_t bit1 = (byte1 >> (7 - tilexc)) & 0x1;
+			uint8_t bit2 = (byte2 >> (7 - tilexc)) & 0x1;
+			
+			colorval = (bit1 << 1) | bit2;
 		}
 
-		SDL_Color color = get_color(colorval);		
-		set_pixel(offx, offy, color);
+		sf::Color color = get_color(colorval, palette);
+		
+		if (offx <= view_x + 160 && offy <= view_y + 144)
+			pixels.setPixel(offx % 160, offy % 144, color);
 	}
 }
 
 void PPU::draw_sprites()
 {
+	uint8_t lcd_control = mmu->read(LCD_CONTROL);
+	uint8_t scanline = mmu->read(LY);
+	uint16_t sprite_data = 0x8000;
+
+	for (int sprite = 0; sprite < 40; sprite++) {
+		uint8_t index = sprite * 4;
+		uint8_t yPos = mmu->read(SPRITE_ATTR + index) - 16;
+		uint8_t xPos = mmu->read(SPRITE_ATTR + index + 1) - 8;
+		
+		uint8_t tile_num = mmu->read(SPRITE_ATTR + index + 2);
+		uint8_t attr = mmu->read(SPRITE_ATTR + index + 3);
+
+		bool yFlip = CPU::get_bit(attr, 6);
+		bool xFlip = CPU::get_bit(attr, 5);
+
+		int sprite_height = CPU::get_bit(lcd_control, 2) ? 16 : 8;
+
+		if (scanline >= yPos && scanline < yPos + sprite_height) {
+			int line = scanline - yPos;
+
+			if (yFlip) {
+				line -= sprite_height; line *= -1;
+			}
+
+			line *= 2;
+			uint16_t dataAddress = (sprite_data + (tile_num * 16)) + line;
+			uint8_t byte1 = mmu->read(dataAddress);
+			uint8_t byte2 = mmu->read(dataAddress + 1);
+
+			for (int pixel = 7; pixel >= 0; pixel--) {
+				
+				int colourbit = pixel;
+				if (xFlip) {
+					colourbit -= 7;
+					colourbit *= -1;
+				}
+
+				uint8_t bit1 = CPU::get_bit(byte2, colourbit);
+				uint8_t bit2 = CPU::get_bit(byte1, colourbit);
+				uint8_t colorval = (bit1 << 1) | bit2;
+				
+				uint16_t colour_addr = CPU::get_bit(attr, 4) ? SPRITE_PALETTE0 : SPRITE_PALETTE1;
+				sf::Color color = get_color(colorval, mmu->read(colour_addr));
+
+				if (color == sf::Color::White)
+					continue;
+
+				int xPix = 7 - pixel;
+				int pixelpos = xPos + xPix;
+
+				if (scanline >= 0 && scanline <= 143 && pixelpos >= 0 && pixel <= 160) {
+					pixels.setPixel(pixelpos, scanline, color);
+				}
+			}
+		}
+	}
 }
 
 void PPU::draw_line()
@@ -169,80 +224,19 @@ void PPU::draw_line()
 
 void PPU::blit_pixels()
 {
-	SDL_UpdateTexture(frame_buffer, NULL, surface->pixels, surface->pitch);
+	frame_buffer.loadFromImage(pixels);
 }
 
-SDL_Color PPU::get_color(uint8_t value)
+sf::Color PPU::get_color(uint8_t value, uint8_t palette)
 {
-	SDL_Color color;
-	color.a = 255;
-	
-	if (value == 0) {
-		color.r = 255; color.g = 255; color.b = 255;
-	}
-	else if (value == 1) {
-		color.r = 192; color.g = 192; color.b = 192;
-	}
-	else if (value == 2) {
-		color.r = 96; color.g = 96; color.b = 96;
-	}
-	else if (value == 3) {
-		color.r = 0; color.g = 0; color.b = 0;
-	}
+	uint8_t colorfrompal = (palette >> (2 * value)) & 3;
 
-	return color;
-}
-
-void PPU::set_pixel(int x, int y, SDL_Color c)
-{
-	int bpp = surface->format->BytesPerPixel;
-	uint8_t* p = (uint8_t*)surface->pixels + y * surface->pitch + x * bpp;
-
-	uint32_t pixel = SDL_MapRGB(surface->format, c.r, c.g, c.b);
-
-	if (bpp == 1)
-		*p = pixel;
-	else if (bpp == 2)
-		*(uint16_t*)p = pixel;
-	else if (bpp == 3) {
-		if (SDL_BYTEORDER == SDL_BIG_ENDIAN) {
-			p[0] = (pixel >> 16) & 0xff;
-			p[1] = (pixel >> 8) & 0xff;
-			p[2] = pixel & 0xff;
-		}
-		else {
-			p[0] = pixel & 0xff;
-			p[1] = (pixel >> 8) & 0xff;
-			p[2] = (pixel >> 16) & 0xff;
-		}
-	}
-	else if (bpp == 4)
-		*(uint32_t*)p = pixel;
-}
-
-SDL_Color PPU::get_pixel(int x, int y)
-{
-	int bpp = surface->format->BytesPerPixel;
-	uint8_t* p = (uint8_t*)surface->pixels + y * surface->pitch + x * bpp;
-	uint8_t pixel;
-
-	if (bpp == 1)
-		pixel = *p;
-	else if (bpp == 2)
-		pixel = *(uint16_t*)p;
-	else if (bpp == 3) {
-		if (SDL_BYTEORDER == SDL_BIG_ENDIAN)
-			pixel = p[0] << 16 | p[1] << 8 | p[2];
-		else
-			pixel = p[0] | p[1] << 8 | p[2] << 16;
-	}
-	else if (bpp == 4)
-		pixel = *(uint32_t*)p;
-	else
-		pixel = 0;
-
-	SDL_Color rgb;
-	SDL_GetRGB(pixel, surface->format, &rgb.r, &rgb.g, &rgb.b);
-
-	return rgb;
+	if (colorfrompal == 0)
+		return sf::Color::White;
+	else if (colorfrompal == 1)
+		return sf::Color(192, 192, 192, 255);
+	else if (colorfrompal == 2)
+		return sf::Color(96, 96, 96, 255);
+	else if (colorfrompal == 3)
+		return sf::Color::Black;
 }

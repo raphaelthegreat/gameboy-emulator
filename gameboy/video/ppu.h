@@ -1,6 +1,5 @@
 #pragma once
-#include <SDL.h>
-#include <SDL_opengl.h>
+#include <SFML/Graphics.hpp>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -17,22 +16,17 @@ enum LCDMode {
 	DataTrans = 3
 };
 
-enum Color {
-	White = 00,
-	LGray = 01,
-	DGray = 10,
-	Black = 11
-};
-
 #define BG_PALETTE_DATA 0xFF47
 #define SPRITE_PALETTE0 0xFF48
 #define SPRITE_PALETTE1 0xFF49
 
-#define SCROLL_X 0xFF42
-#define SCROLL_Y 0xFF43
+#define SCROLL_X 0xFF43
+#define SCROLL_Y 0xFF42
 
 #define WINDOW_X 0xFF4A
 #define WINDOW_Y 0xFF4B
+
+#define SPRITE_ATTR 0xFE00
 
 class MMU;
 class PPU {
@@ -51,10 +45,7 @@ public:
 	void draw_line();
 	void blit_pixels();
 
-	SDL_Color get_color(uint8_t value);
-
-	void set_pixel(int x, int y, SDL_Color c);
-	SDL_Color get_pixel(int x, int y);
+	sf::Color get_color(uint8_t value, uint8_t palette);
 
 public:
 	MMU* mmu;
@@ -63,6 +54,6 @@ public:
 	int scanline_counter = 0;
 	LCDMode mode;
 
-	SDL_Texture* frame_buffer;
-	SDL_Surface* surface;
+	sf::Texture frame_buffer;
+	sf::Image pixels, white;
 };

@@ -11,6 +11,8 @@
 #define LCD_STATUS 0xFF41
 #define LCD_CONTROL 0xFF40
 
+#define BOOTING 0xFF50
+
 class Cartridge;
 class GameBoy;
 class MMU {
@@ -30,10 +32,9 @@ public:
 	GameBoy* gb;
 
 public:
-	uint8_t bios[256], ram[8192], vram[8192];
+	bool booting = true;
+	uint8_t bios[256], vram[8192];
 	uint8_t wram[8192], hram[128], oam[160], io[128];
 
 	uint8_t enable_interupts; // 0xFFFF
-
-	bool booting = true;
 };
