@@ -9,6 +9,11 @@
 
 using std::vector;
 
+enum Object {
+	Background,
+	Sprite
+};
+
 enum LCDMode {
 	HBlank = 0,
 	VBlank = 1,
@@ -23,8 +28,8 @@ enum LCDMode {
 #define SCROLL_X 0xFF43
 #define SCROLL_Y 0xFF42
 
-#define WINDOW_X 0xFF4A
-#define WINDOW_Y 0xFF4B
+#define WINDOW_X 0xFF4B
+#define WINDOW_Y 0xFF4A
 
 #define SPRITE_ATTR 0xFE00
 
@@ -45,7 +50,7 @@ public:
 	void draw_line();
 	void blit_pixels();
 
-	sf::Color get_color(uint8_t value, uint8_t palette);
+	sf::Color get_color(uint8_t value, uint8_t palette, Object obj);
 
 public:
 	MMU* mmu;
@@ -55,5 +60,6 @@ public:
 	LCDMode mode;
 
 	sf::Texture frame_buffer;
-	sf::Image pixels, white;
+	
+	sf::Image pixels;
 };

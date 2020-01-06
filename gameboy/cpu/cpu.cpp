@@ -1,4 +1,5 @@
 #include "cpu.h"
+#include <SFML/Window/Keyboard.hpp>
 #include <cpu/mmu.h>
 
 #pragma warning(disable : 26812)
@@ -49,14 +50,12 @@ inline uint16_t Register::get()
     return result;
 }
 
-CPU::CPU()
+CPU::CPU(MMU* _mmu) : mmu(_mmu),
+   cpu_timer(_mmu)
 {
+    std::cout.sync_with_stdio(false);
+
     this->register_opcodes();
-
-    divider_counter = 0;
-    frequency = 4096;
-    timer_counter = 0;
-
     out.open("log.txt", std::ofstream::out | std::ofstream::app);
 }
 
@@ -122,8 +121,18 @@ void CPU::reset()
 
 uint32_t CPU::tick()
 {    
-    if (halted == true) return 1;
-    if (pc == 0x00FA) { pc = 0x00FC; gate = true; std::cout << "Start!\n"; } // Bypass nintendo check
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::L)) {
+        out << to_hex(pc) << " | " << get_flag(Z) << ' ' << get_flag(N);
+        out << ' ' << get_flag(H) << ' ' << get_flag(C) << " AF: ";
+        out << to_hex(af.get()) << " BC: " << to_hex(bc.get());
+        out << " DE: " << to_hex(de.get()) << " HL: " << to_hex(hl.get()) << ' ' << (int)mmu->read(LY) <<'\n';
+    }
+
+    //if (pc == 0x2CAD) __debugbreak();
+
+    if (halted) return 1;
+
+    if (pc == 0x00FA) pc = 0x00FC; // Bypass nintendo check
 
     opcode = mmu->read(pc++);  // Fetch
 
@@ -132,7 +141,7 @@ uint32_t CPU::tick()
     }        
 
     Instruction instr = lookup[opcode]; // Decode
-       
+
     cycles = instr.cycles; // Cycles required
     cycles += instr.exec(); // Execute (may require extra cycles for instructions like jp with condition)    
 
@@ -141,38 +150,7 @@ uint32_t CPU::tick()
 
 void CPU::update_timers(uint32_t cycle)
 {
-    divider_counter += cycles;
-    if (divider_counter >= 256) {
-        divider_counter -= 256;
-        mmu->write(DIV, 0);
-    }
-
-    uint8_t tac = mmu->read(TAC);
-    if (get_bit(tac, 2)) {
-        timer_counter += cycle * 4; // convert M-cycles to T - states
-        uint8_t clock_select = tac & 0x3;
-
-        if (clock_select == 0)
-            frequency = 4096;
-        else if (clock_select == 1)
-            frequency = 262144;
-        else if (clock_select == 2)
-            frequency = 65536;
-        else if (clock_select == 3)
-            frequency = 16384;
-    }
-    
-    while (timer_counter >= (4194304 / frequency)) {
-        mmu->get(TIMA)++;
-
-        if (mmu->read(TIMA) == 0) { // Overflowed?
-            interupt(TIMER_INTERUPT);
-
-            mmu->write(TIMA, mmu->read(TMA));
-        }
-
-        timer_counter -= (4194304 / frequency);
-    }
+    cpu_timer.update(cycle);
 }
 
 void CPU::interupt(uint32_t id)
@@ -208,6 +186,8 @@ void CPU::handle_interupts()
                     else if (i == 2) pc = 0x50;
                     else if (i == 3) pc = 0x58;
                     else if (i == 4) pc = 0x60;
+
+                    out << "Interput!: " << to_hex(pc) << '\n';
                 }
             }
         }
@@ -244,7 +224,6 @@ int CPU::opcode03()
 int CPU::opcode04()
 {
     bc.h++;
-
     bool half_carry = (bc.h & 0x0F) == 0x00;
 
     set_flag(Z, bc.h == 0);
@@ -630,7 +609,7 @@ int CPU::opcode27()
 int CPU::opcode28()
 {
     if (get_flag(Z)) {
-        int8_t r8 = static_cast<int8_t>(mmu->read(pc++));
+        int8_t r8 = T8(mmu->read(pc++));
         pc += r8;
         return 1;
     }
@@ -787,7 +766,7 @@ int CPU::opcode37()
 int CPU::opcode38()
 {
     if (get_flag(C)) {
-        uint8_t r8 = static_cast<int8_t>(mmu->read(pc++));
+        int8_t r8 = T8(mmu->read(pc++));
         pc += r8;
 
         return 1;
@@ -3637,18 +3616,12 @@ int CPU::opcodeCB36()
 
 int CPU::opcodeCB37()
 {
-    uint8_t reg = af.h;
-    uint8_t lower_nibble = reg & 0x0F;
-    uint8_t upper_nibble = (reg & 0xF0) >> 4;
-
-    uint8_t result = combine_nibbles(upper_nibble, lower_nibble);
-
-    set_flag(Z, result == 0);
+    af.h = (af.h << 4) | (af.h >> 4);
+    
+    set_flag(Z, af.h == 0);
     set_flag(N, 0);
     set_flag(H, 0);
     set_flag(C, 0);
-
-    af.h = result;
 
     return 0;
 }

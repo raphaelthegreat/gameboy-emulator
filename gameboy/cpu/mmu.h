@@ -21,20 +21,16 @@ public:
 	~MMU() = default;
 
 	uint8_t read(uint16_t addr);	
-	uint8_t& get(uint16_t addr); // Same as read you just get a ref to memory (This is used so I can increment for example the LY without reseting it)
+	uint8_t& get(uint16_t addr); // VERY UNSAFE USE ONLY IF NECCESSARY
 	void write(uint16_t addr, uint8_t data);
 
 	void copy_bootrom(uint8_t* rom);
-	void dma_transfer(uint16_t addr, uint8_t data);
+	void dma_transfer(uint8_t data);
 
 public:
 	Cartridge* cartridge;
 	GameBoy* gb;
 
 public:
-	bool booting = true;
-	uint8_t bios[256], vram[8192];
-	uint8_t wram[8192], hram[128], oam[160], io[128];
-
-	uint8_t enable_interupts; // 0xFFFF
+	uint8_t bios[256], memory[0x10000];
 };

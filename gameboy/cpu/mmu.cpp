@@ -1,109 +1,68 @@
 #include "mmu.h"
 #include <cartridge/cartridge.h>
 #include <gameboy.h>
+#include <cpu/timer.h>
 
 #pragma warning(disable : 6385)
 #pragma warning(disable : 6386)
 
-uint8_t MMU::read(uint16_t addr)
+uint8_t MMU::read(uint16_t address)
 {
 	uint8_t data = 0x00;
 	LCDMode mode = gb->ppu.mode;
 
-	if (addr >= 0x0000 && addr <= 0x00FF && booting)
-		data = bios[addr];
-	else if (addr >= 0x0000 && addr <= 0x3FFF)
-		data = cartridge->rom[addr];
-	else if (addr >= 0x4000 && addr <= 0x7FFF)
-		data = cartridge->rom[addr];
-	else if (addr >= 0x8000 && addr <= 0x9FFF)
-		data = vram[addr - 0x8000];
-	else if (addr >= 0xA000 && addr <= 0xBFFF)
-		; // Cartridge Ram
-	else if (addr >= 0xC000 && addr <= 0xDFFF)
-		data = wram[addr - 0xC000];
-	else if (addr >= 0xE000 && addr <= 0xFDFF)
-		; // For the future
-	else if (addr >= 0xFE00 && addr <= 0xFE9F)
-		data = oam[addr - 0xFE00];
-	else if (addr >= 0xFF00 && addr <= 0xFF7F)
-		data = io[addr - 0xFF00];
-	else if (addr >= 0xFF80 && addr <= 0xFFFE)
-		data = hram[addr - 0xFF80];
-	else if (addr == 0xFFFF)
-		data = enable_interupts;
+	if (address >= 0x0000 && address <= 0x00FF && !memory[BOOTING]) {
+		data = bios[address];
+	}
+	else if (address == JOYPAD) {
+		data = gb->joypad.read();
+	}
+	else if (address >= 0x0000 && address <= 0x7FFF) {
+		data = cartridge->read(address);
+	}
+	else if (address >= 0xA000 && address <= 0xBFFF) {
+		data = cartridge->read(address);
+	}
+	else {
+		data = memory[address];
+	}
 
 	return data;
 }
 
-uint8_t& MMU::get(uint16_t addr)
+uint8_t& MMU::get(uint16_t address)
 {
-	std::reference_wrapper<uint8_t> data = cartridge->rom[0];
+	std::reference_wrapper<uint8_t> data = cartridge->data[0];
 
-	if (addr >= 0x0000 && addr <= 0x00FE && booting)
-		data = bios[addr];
-	else if (addr >= 0x0000 && addr <= 0x3FFF)
-		data = cartridge->rom[addr];
-	else if (addr >= 0x4000 && addr <= 0x7FFF)
-		data = cartridge->rom[addr];
-	else if (addr >= 0x8000 && addr <= 0x9FFF)
-		data = vram[addr - 0x8000];
-	else if (addr >= 0xA000 && addr <= 0xBFFF)
-		;
-	else if (addr >= 0xC000 && addr <= 0xDFFF)
-		data = wram[addr - 0xC000];
-	else if (addr >= 0xE000 && addr <= 0xFDFF)
-		; // For the future
-	else if (addr >= 0xFE00 && addr <= 0xFE9F)
-		data = oam[addr - 0xFE00];
-	else if (addr >= 0xFF00 && addr <= 0xFF7F)
-		data = io[addr - 0xFF00];
-	else if (addr >= 0xFF80 && addr <= 0xFFFE)
-		data = hram[addr - 0xFF80];
-	else if (addr == 0xFFFF)
-		data = enable_interupts;
-
+	data = memory[address];
 	return data.get();
 }
 
-void MMU::write(uint16_t addr, uint8_t data)
+void MMU::write(uint16_t address, uint8_t data)
 {
 	LCDMode mode = gb->ppu.mode;
 
-	if (addr == 0xFF42 && data == 0x81)
-		std::cout << read(0xFF41);
+	if (address >= 0xFEA0 && address < 0xFEFF) return;
 
-	if (addr == 0xFF50)
-		booting = false;
-
-	if (addr >= 0x8000 && addr <= 0x9FFF && mode == DataTrans)
-		return;
-	if (addr >= 0xFE00 && addr <= 0xFE9F && mode != VBlank && mode != HBlank)
-		return;
-
-	if (addr == LY)
-		io[LY - 0xFF00] = 0;
-	if (addr == DMA)
-		dma_transfer(addr, data);
-	if (addr == DIV)
-		io[addr - 0xFF00] = 0;
-
-	if (addr >= 0x8000 && addr <= 0x9FFF)
-		vram[addr - 0x8000] = data;
-	else if (addr >= 0xA000 && addr <= 0xBFFF)
-		cartridge->get_byte(addr - 0xA000);
-	else if (addr >= 0xC000 && addr <= 0xDFFF)
-		wram[addr - 0xC000] = data;
-	else if (addr >= 0xE000 && addr <= 0xFDFF)
-		; // For the future
-	else if (addr >= 0xFE00 && addr <= 0xFE9F)
-		oam[addr - 0xFE00] = data;
-	else if (addr >= 0xFF00 && addr <= 0xFF7F)
-		io[addr - 0xFF00] = data;
-	else if (addr >= 0xFF80 && addr <= 0xFFFE)
-		hram[addr - 0xFF80] = data;
-	else if (addr == 0xFFFF)
-		enable_interupts = data;
+	if (address < 0x8000 || (address >= 0xA000 && address <= 0xBFFF)) {
+		cartridge->write(address, data);
+	}
+	else if (address == DMA) {
+		dma_transfer(data);
+	}
+	else if (address == DIV || address == LY) {
+		memory[address] = 0;
+	}
+	if (address >= 0xE000 && address < 0xFE00) { // Echo Ram
+		memory[address - 0x2000] = data;
+		memory[address] = data;
+	}
+	else if (address == JOYPAD) {
+		memory[address] = data & 0x30;
+	}
+	else {
+		memory[address] = data;
+	}
 }
 
 void MMU::copy_bootrom(uint8_t* rom)
@@ -112,7 +71,7 @@ void MMU::copy_bootrom(uint8_t* rom)
 		bios[i] = rom[i];
 }
 
-void MMU::dma_transfer(uint16_t addr, uint8_t data)
+void MMU::dma_transfer(uint8_t data)
 {
 	uint16_t address = data << 8;
 	for (int i = 0; i < 160; i++) {

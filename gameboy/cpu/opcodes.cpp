@@ -128,7 +128,7 @@ void CPU::register_opcodes()
     lookup[0x7B] = { "LD", BIND(&CPU::opcode7B), 1};
     lookup[0x7C] = { "LD", BIND(&CPU::opcode7C), 1};
     lookup[0x7D] = { "LD", BIND(&CPU::opcode7D), 1};
-    lookup[0x7E] = { "LD", BIND(&CPU::opcode7E), 1};
+    lookup[0x7E] = { "LD", BIND(&CPU::opcode7E), 2};
     lookup[0x7F] = { "LD", BIND(&CPU::opcode7F), 1};
     lookup[0x80] = { "ADD", BIND(&CPU::opcode80), 1};
     lookup[0x81] = { "ADD", BIND(&CPU::opcode81), 1};
@@ -241,7 +241,7 @@ void CPU::register_opcodes()
     lookup[0xEC] = { "ILL", BIND(&CPU::opcodeEC), 1};
     lookup[0xED] = { "ILL", BIND(&CPU::opcodeED), 1};
     lookup[0xEE] = { "XOR", BIND(&CPU::opcodeEE), 2};
-    lookup[0xEF] = { "RST", BIND(&CPU::opcodeEE), 4};
+    lookup[0xEF] = { "RST", BIND(&CPU::opcodeEF), 4};
     lookup[0xF0] = { "LDH", BIND(&CPU::opcodeF0), 3};
     lookup[0xF1] = { "POP", BIND(&CPU::opcodeF1), 3};
     lookup[0xF2] = { "LD", BIND(&CPU::opcodeF2), 2};
@@ -281,8 +281,8 @@ void CPU::register_opcodes()
     lookup[0xCB13] = { "RL", BIND(&CPU::opcodeCB13), 2 };
     lookup[0xCB14] = { "RL", BIND(&CPU::opcodeCB14), 2 };
     lookup[0xCB15] = { "RL", BIND(&CPU::opcodeCB15), 2 };
-    lookup[0xCB16] = { "RL", BIND(&CPU::opcodeCB16), 2 };
-    lookup[0xCB17] = { "RL", BIND(&CPU::opcodeCB17), 4 };
+    lookup[0xCB16] = { "RL", BIND(&CPU::opcodeCB16), 4 };
+    lookup[0xCB17] = { "RL", BIND(&CPU::opcodeCB17), 2 };
     lookup[0xCB18] = { "RR", BIND(&CPU::opcodeCB18), 2 };
     lookup[0xCB19] = { "RR", BIND(&CPU::opcodeCB19), 2 };
     lookup[0xCB1A] = { "RR", BIND(&CPU::opcodeCB1A), 2 };
@@ -337,7 +337,7 @@ void CPU::register_opcodes()
     lookup[0xCB4B] = { "BIT", BIND(&CPU::opcodeCB4B), 2 };
     lookup[0xCB4C] = { "BIT", BIND(&CPU::opcodeCB4C), 2 };
     lookup[0xCB4D] = { "BIT", BIND(&CPU::opcodeCB4D), 2 };
-    lookup[0xCB4E] = { "BIT", BIND(&CPU::opcodeCB4E), 3 };
+    lookup[0xCB4E] = { "BIT", BIND(&CPU::opcodeCB4E), 4 };
     lookup[0xCB4F] = { "BIT", BIND(&CPU::opcodeCB4F), 2 };    
     lookup[0xCB50] = { "BIT", BIND(&CPU::opcodeCB50), 2 };
     lookup[0xCB51] = { "BIT", BIND(&CPU::opcodeCB51), 2 };
@@ -345,7 +345,7 @@ void CPU::register_opcodes()
     lookup[0xCB53] = { "BIT", BIND(&CPU::opcodeCB53), 2 };
     lookup[0xCB54] = { "BIT", BIND(&CPU::opcodeCB54), 2 };
     lookup[0xCB55] = { "BIT", BIND(&CPU::opcodeCB55), 2 };
-    lookup[0xCB56] = { "BIT", BIND(&CPU::opcodeCB56), 3 };
+    lookup[0xCB56] = { "BIT", BIND(&CPU::opcodeCB56), 4 };
     lookup[0xCB57] = { "BIT", BIND(&CPU::opcodeCB57), 2 };
     lookup[0xCB58] = { "BIT", BIND(&CPU::opcodeCB58), 2 };
     lookup[0xCB59] = { "BIT", BIND(&CPU::opcodeCB59), 2 };
@@ -353,7 +353,7 @@ void CPU::register_opcodes()
     lookup[0xCB5B] = { "BIT", BIND(&CPU::opcodeCB5B), 2 };
     lookup[0xCB5C] = { "BIT", BIND(&CPU::opcodeCB5C), 2 };
     lookup[0xCB5D] = { "BIT", BIND(&CPU::opcodeCB5D), 2 };
-    lookup[0xCB5E] = { "BIT", BIND(&CPU::opcodeCB5E), 3 };
+    lookup[0xCB5E] = { "BIT", BIND(&CPU::opcodeCB5E), 4 };
     lookup[0xCB5F] = { "BIT", BIND(&CPU::opcodeCB5F), 2 };   
     lookup[0xCB60] = { "BIT", BIND(&CPU::opcodeCB60), 2 };
     lookup[0xCB61] = { "BIT", BIND(&CPU::opcodeCB61), 2 };
@@ -361,7 +361,7 @@ void CPU::register_opcodes()
     lookup[0xCB63] = { "BIT", BIND(&CPU::opcodeCB63), 2 };
     lookup[0xCB64] = { "BIT", BIND(&CPU::opcodeCB64), 2 };
     lookup[0xCB65] = { "BIT", BIND(&CPU::opcodeCB65), 2 };
-    lookup[0xCB66] = { "BIT", BIND(&CPU::opcodeCB66), 3 };
+    lookup[0xCB66] = { "BIT", BIND(&CPU::opcodeCB66), 4 };
     lookup[0xCB67] = { "BIT", BIND(&CPU::opcodeCB67), 2 };
     lookup[0xCB68] = { "BIT", BIND(&CPU::opcodeCB68), 2 };
     lookup[0xCB69] = { "BIT", BIND(&CPU::opcodeCB69), 2 };
@@ -369,7 +369,7 @@ void CPU::register_opcodes()
     lookup[0xCB6B] = { "BIT", BIND(&CPU::opcodeCB6B), 2 };
     lookup[0xCB6C] = { "BIT", BIND(&CPU::opcodeCB6C), 2 };
     lookup[0xCB6D] = { "BIT", BIND(&CPU::opcodeCB6D), 2 };
-    lookup[0xCB6E] = { "BIT", BIND(&CPU::opcodeCB6E), 3 };
+    lookup[0xCB6E] = { "BIT", BIND(&CPU::opcodeCB6E), 4 };
     lookup[0xCB6F] = { "BIT", BIND(&CPU::opcodeCB6F), 2 };
     lookup[0xCB70] = { "BIT", BIND(&CPU::opcodeCB70), 2 };
     lookup[0xCB71] = { "BIT", BIND(&CPU::opcodeCB71), 2 };
@@ -377,7 +377,7 @@ void CPU::register_opcodes()
     lookup[0xCB73] = { "BIT", BIND(&CPU::opcodeCB73), 2 };
     lookup[0xCB74] = { "BIT", BIND(&CPU::opcodeCB74), 2 };
     lookup[0xCB75] = { "BIT", BIND(&CPU::opcodeCB75), 2 };
-    lookup[0xCB76] = { "BIT", BIND(&CPU::opcodeCB76), 3 };
+    lookup[0xCB76] = { "BIT", BIND(&CPU::opcodeCB76), 4 };
     lookup[0xCB77] = { "BIT", BIND(&CPU::opcodeCB77), 2 };
     lookup[0xCB78] = { "BIT", BIND(&CPU::opcodeCB78), 2 };
     lookup[0xCB79] = { "BIT", BIND(&CPU::opcodeCB79), 2 };
@@ -385,7 +385,7 @@ void CPU::register_opcodes()
     lookup[0xCB7B] = { "BIT", BIND(&CPU::opcodeCB7B), 2 };
     lookup[0xCB7C] = { "BIT", BIND(&CPU::opcodeCB7C), 2 };
     lookup[0xCB7D] = { "BIT", BIND(&CPU::opcodeCB7D), 2 };
-    lookup[0xCB7E] = { "BIT", BIND(&CPU::opcodeCB7E), 3 };
+    lookup[0xCB7E] = { "BIT", BIND(&CPU::opcodeCB7E), 4 };
     lookup[0xCB7F] = { "BIT", BIND(&CPU::opcodeCB7F), 2 };        
     lookup[0xCB80] = { "RES", BIND(&CPU::opcodeCB80), 2 };
     lookup[0xCB81] = { "RES", BIND(&CPU::opcodeCB81), 2 };
@@ -520,3 +520,4 @@ void CPU::register_opcodes()
     lookup[0xCBFE] = { "SET", BIND(&CPU::opcodeCBFE), 4 };
     lookup[0xCBFF] = { "SET", BIND(&CPU::opcodeCBFF), 2 };
 }
+

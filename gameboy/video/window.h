@@ -1,5 +1,6 @@
 #pragma once
 #include <SFML/Graphics.hpp>
+#include <gameboy.h>
 
 #include <string>
 #include <iostream>
@@ -10,24 +11,28 @@ using std::unique_ptr;
 using namespace std::chrono;
 using dmilliseconds = duration<double, std::milli>;
 
+class GameBoy;
 class Window {
 public:
-	Window(int width, int height, const std::string& name);
+	Window(int width, int height, const std::string& name, GameBoy* _gb);
 	virtual ~Window();
 
 	void update();
 	void render(sf::Sprite& texture);
 
 	double get_deltatime();
-
 	bool should_close();
+
+	Key map_key(sf::Keyboard::Key key);
 
 public:
 	unique_ptr<sf::RenderWindow> window;
-	
+	GameBoy* gb;
+
 	system_clock clock;
 	system_clock::time_point previous, now;
 	dmilliseconds delta_time;
 	
 	int width, height;
+	int interval = 0;
 };

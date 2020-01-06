@@ -8,6 +8,8 @@
 #include <iostream>
 #include <functional>
 
+#include <cpu/timer.h>
+
 std::string to_hex(uint16_t n);
 
 #define BIND(x) std::bind(x, this)
@@ -15,6 +17,8 @@ std::string to_hex(uint16_t n);
 #define TU8(x) static_cast<uint8_t>(x)
 #define T8(x) static_cast<int8_t>(x)
 #define TU16(x) static_cast<uint16_t>(x)
+
+#define PCBREAK(addr) if (pc == addr) __debugbreak();
 
 using std::map;
 
@@ -58,7 +62,7 @@ public:
 class MMU;
 class CPU {
 public:
-	CPU();
+	CPU(MMU* _mmu);
 	~CPU() = default;
 
 	void register_opcodes();
@@ -127,14 +131,13 @@ public:
 	Register af, bc, de, hl;
 	uint16_t pc, sp;
 
-	uint32_t cycles;
-    uint32_t frequency;
-    uint32_t divider_counter;
-    uint32_t timer_counter;
+	uint32_t cycles = 0;
 
     std::ofstream out;
+    Timer cpu_timer;
 
     bool halted = false;
     bool interupts_enabled = true;
-    bool gate = false;
+
+    uint32_t divider_counter = 0;
 };

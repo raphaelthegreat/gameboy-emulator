@@ -94,9 +94,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="cartridge\cartridge.cpp" />
+    <ClCompile Include="cartridge\joypad.cpp" />
+    <ClCompile Include="cartridge\mbc.cpp" />
     <ClCompile Include="cpu\mmu.cpp" />
     <ClCompile Include="cpu\cpu.cpp" />
     <ClCompile Include="cpu\opcodes.cpp" />
+    <ClCompile Include="cpu\timer.cpp" />
     <ClCompile Include="gameboy.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="video\ppu.cpp" />
@@ -104,9 +107,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cartridge\cartridge.h" />
+    <ClInclude Include="cartridge\joypad.h" />
+    <ClInclude Include="cartridge\mbc.h" />
     <ClInclude Include="cpu\bios.h" />
     <ClInclude Include="cpu\mmu.h" />
     <ClInclude Include="cpu\cpu.h" />
+    <ClInclude Include="cpu\timer.h" />
     <ClInclude Include="gameboy.h" />
     <ClInclude Include="video\ppu.h" />
     <ClInclude Include="video\window.h" />

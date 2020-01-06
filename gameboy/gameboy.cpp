@@ -3,18 +3,16 @@
 #include <thread>
 #include <iomanip>
 
-GameBoy::GameBoy(Window* _window)
+GameBoy::GameBoy() : cpu(&mmu)
 {
-    window = _window;
     mmu.gb = this;
-
-    cpu.mmu = &mmu;
+    
     ppu.init(&mmu);
+    joypad.init(&mmu);
 	cpu.reset();
-
+    
     viewport = sf::Sprite(ppu.frame_buffer);
     viewport.setScale(3.5, 3.5);
-    viewport.setPosition(10, 0);
 }
 
 ref<Cartridge> GameBoy::load_rom(const std::string& file)
@@ -37,8 +35,7 @@ void GameBoy::boot(const std::string& boot)
 
     cpu.pc = 0;
 
-    mmu.copy_bootrom(bootrom);  
-    mmu.booting = true;
+    mmu.copy_bootrom(bootrom);
 }
 
 void GameBoy::cpu_stats()
@@ -82,18 +79,17 @@ void GameBoy::memory_map(uint16_t from, uint16_t to, uint8_t step)
 
 void GameBoy::tick()
 {
-    int cycles = 0;
+    uint32_t current_cycle = 0;
 
-    while (cycles < cycles_per_frame)
-    {
-        cpu.handle_interupts();
-        auto cycle = cpu.tick();
-        
-        cycles += cycle;
+    while (current_cycle < cycles_per_frame) {
+        uint32_t cycle = cpu.tick();
+        current_cycle += cycle;
+
         cpu.update_timers(cycle);
-
         ppu.tick(cycle);
+        
+        cpu.handle_interupts();
     }
-
+    
     ppu.blit_pixels();
 }
