@@ -3,7 +3,9 @@
 #include <thread>
 #include <iomanip>
 
-GameBoy::GameBoy() : cpu(&mmu)
+const char* title() { return "File Dialog"; }
+
+GameBoy::GameBoy() : cpu(&mmu), file(title)
 {
     mmu.gb = this;
     
@@ -15,14 +17,10 @@ GameBoy::GameBoy() : cpu(&mmu)
     viewport.setScale(3.5, 3.5);
 }
 
-ref<Cartridge> GameBoy::load_rom(const std::string& file)
+void GameBoy::load_rom(const std::string& file)
 {
-    auto cart = std::make_shared<Cartridge>();
-    cart->load_rom(file);
-
-    mmu.cartridge = cart.get();
-
-    return cart;
+    mmu.cartridge = std::make_shared<Cartridge>();
+    mmu.cartridge->load_rom(file);
 }
 
 void GameBoy::boot(const std::string& boot)
@@ -40,7 +38,7 @@ void GameBoy::boot(const std::string& boot)
 
 void GameBoy::cpu_stats()
 {
-	/*ImGui::Begin("CPU-Info");
+	ImGui::Begin("CPU-Info");
 	ImGui::Text("N: %d Z: %d H: %d C: %d",
 		cpu.get_flag(N),
 		cpu.get_flag(Z),
@@ -56,25 +54,87 @@ void GameBoy::cpu_stats()
 	ImGui::Text("Opcode: %s", to_hex(cpu.opcode).c_str());
 	ImGui::NewLine();
 	ImGui::Text("Instuction: %s", cpu.lookup[cpu.opcode].name.c_str());
-	ImGui::End();*/
+	ImGui::End();
 }
 
 void GameBoy::memory_map(uint16_t from, uint16_t to, uint8_t step)
 {
-    /*ImGui::Begin("Memory");
+    ImGui::Begin("Memory");
 
-    std::string line = "";
-    for (int i = from; i <= to; i++) {
-        
-        if ((i - from) % step == 0) {
-            ImGui::Text(line.c_str());           
-            line.clear();
+    if (mmu.read(BOOTING)) {
+        std::string line = "";
+        line += "0x0000 | ";
+        for (int i = from; i <= to; i++) {
+            if ((i - from) % step == 0) {
+                ImGui::Text(line.c_str());
+                line.clear();
+                line += "0x" + to_hex_string(i) + " | ";
+            }
+
+            line += "0x" + to_hex_string(mmu.read(i)) + ' ';
         }
-
-        line += std::to_string(mmu.read(i)) + ' ';
     }
 
-    ImGui::End();*/
+    ImGui::End();
+}
+
+void GameBoy::dockspace(std::function<void()> menu_func)
+{
+    ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
+
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->Pos);
+    ImGui::SetNextWindowSize(viewport->Size);
+    ImGui::SetNextWindowViewport(viewport->ID);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+    if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
+        window_flags |= ImGuiWindowFlags_NoBackground;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::Begin("DockSpace Demo", &bool_ptr, window_flags);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(2);
+
+    // DockSpace
+    ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+
+    menu_func();
+
+    ImGui::End();
+}
+
+void GameBoy::menu_function()
+{
+    ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
+    
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Load Rom", "")) {
+                file_dialog_opened = true;
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenuBar();
+    }
+
+    if (file_dialog_opened) {
+        file.openDialog();
+        bool done = file.draw();
+
+        file_dialog_opened = !done;
+        if (file_dialog_opened == false) {
+            load_rom(file.selected()[0]);
+            
+            rom_loaded = true;
+            if (mmu.read(BOOTING)) cpu.reset();
+        }
+    }
 }
 
 void GameBoy::tick()
@@ -92,4 +152,18 @@ void GameBoy::tick()
     }
     
     ppu.blit_pixels();
+}
+
+void GameBoy::display_viewport()
+{
+    ImGui::Begin("Viewport");
+
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    uint32_t tex = viewport.getTexture()->getNativeHandle();
+
+    ImVec2 size = ImGui::GetWindowSize();
+    size.y -= 34.5;
+    
+    ImGui::Image(tex, size, ImVec2(0, 0), ImVec2(0.625, 0.5625));
+    ImGui::End();
 }

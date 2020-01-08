@@ -5,12 +5,60 @@
 #pragma warning(disable : 26812)
 #pragma warning(disable : 26495)
 
-std::string to_hex(uint16_t n)
+std::string to_hex(uint16_t n, int d)
 {
     std::stringstream ss;
-    ss << std::setfill('0') << std::setw(2) << std::hex << (n | 0);
+    ss << std::setfill('0') << std::setw(d) << std::hex << (n | 0);
 
     return "0x" + ss.str();
+}
+
+std::string to_hex_string(uint16_t num)
+{
+    static const char digits[513] =
+        "000102030405060708090A0B0C0D0E0F"
+        "101112131415161718191A1B1C1D1E1F"
+        "202122232425262728292A2B2C2D2E2F"
+        "303132333435363738393A3B3C3D3E3F"
+        "404142434445464748494A4B4C4D4E4F"
+        "505152535455565758595A5B5C5D5E5F"
+        "606162636465666768696A6B6C6D6E6F"
+        "707172737475767778797A7B7C7D7E7F"
+        "808182838485868788898A8B8C8D8E8F"
+        "909192939495969798999A9B9C9D9E9F"
+        "A0A1A2A3A4A5A6A7A8A9AAABACADAEAF"
+        "B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"
+        "C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF"
+        "D0D1D2D3D4D5D6D7D8D9DADBDCDDDEDF"
+        "E0E1E2E3E4E5E6E7E8E9EAEBECEDEEEF"
+        "F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF";
+
+    uint32_t x = (uint32_t)num;
+    int i = 3;
+    char* lut = (char*)digits;
+
+    char buff[8];
+
+    while (i >= 0) {
+        int pos = (x & 0xFF) * 2;
+        char ch = lut[pos];
+        buff[i * 2] = ch;
+
+        ch = lut[pos + 1];
+        buff[i * 2 + 1] = ch;
+
+        x >>= 8;
+        i -= 1;
+    }
+
+    std::string s = std::string(4, ' ');
+
+    s[0] = buff[4];
+    s[1] = buff[5];
+    s[2] = buff[6];
+    s[3] = buff[7];
+
+    return s;
 }
 
 Register& Register::operator=(const uint16_t& reg)
@@ -56,7 +104,7 @@ CPU::CPU(MMU* _mmu) : mmu(_mmu),
     std::cout.sync_with_stdio(false);
 
     this->register_opcodes();
-    out.open("log.txt", std::ofstream::out | std::ofstream::app);
+    //out.open("log.txt", std::ofstream::out | std::ofstream::app);
 }
 
 void CPU::set_bit(uint8_t& num, int b, bool v)
@@ -121,17 +169,14 @@ void CPU::reset()
 
 uint32_t CPU::tick()
 {    
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::L)) {
+    /*if (sf::Keyboard::isKeyPressed(sf::Keyboard::L)) {
         out << to_hex(pc) << " | " << get_flag(Z) << ' ' << get_flag(N);
         out << ' ' << get_flag(H) << ' ' << get_flag(C) << " AF: ";
         out << to_hex(af.get()) << " BC: " << to_hex(bc.get());
         out << " DE: " << to_hex(de.get()) << " HL: " << to_hex(hl.get()) << ' ' << (int)mmu->read(LY) <<'\n';
-    }
-
-    //if (pc == 0x2CAD) __debugbreak();
+    }*/
 
     if (halted) return 1;
-
     if (pc == 0x00FA) pc = 0x00FC; // Bypass nintendo check
 
     opcode = mmu->read(pc++);  // Fetch

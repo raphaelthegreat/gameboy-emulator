@@ -1,6 +1,9 @@
 #pragma once
 #include <chrono>
 #include <vector>
+#include <functional>
+#include <imgui.h>
+#include <imgui_file.h>
 
 #include <cpu/mmu.h>
 #include <video/ppu.h>
@@ -16,13 +19,17 @@ public:
 	GameBoy();
 
 	void boot(const std::string& boot);
-	ref<Cartridge> load_rom(const std::string& file);
+	void load_rom(const std::string& file);
 
 	/* Debug functions */
 	void cpu_stats();
 	void memory_map(uint16_t from, uint16_t to, uint8_t step);
+	void dockspace(std::function<void()> menu_func);
+
+    void menu_function();
 
 	void tick();
+	void display_viewport();
 
 public:
 	const int cycles_per_frame = 17556;
@@ -35,6 +42,7 @@ public:
 	CPU cpu;
 	PPU ppu;
 	Joypad joypad;
+	FileDialog file;
 
 	sf::Sprite viewport;
 	sf::IntRect view_area;
@@ -43,4 +51,7 @@ public:
 	
 	std::chrono::high_resolution_clock clock;
 	bool frame_complete = true;
+	bool bool_ptr = true;
+	bool rom_loaded = false;
+	bool file_dialog_opened = false;
 };

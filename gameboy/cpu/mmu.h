@@ -1,6 +1,9 @@
 #pragma once
 #include <cpu/cpu.h>
 #include <vector>
+#include <memory>
+
+using std::shared_ptr;
 
 #define INTERUPT_FLAG 0xFF0F
 #define INTERUPT_ENABLE 0xFFFF
@@ -28,7 +31,7 @@ public:
 	void dma_transfer(uint8_t data);
 
 public:
-	Cartridge* cartridge;
+	shared_ptr<Cartridge> cartridge;
 	GameBoy* gb;
 
 public:

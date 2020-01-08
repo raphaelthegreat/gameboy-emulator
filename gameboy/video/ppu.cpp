@@ -15,89 +15,82 @@ void PPU::init(MMU* _mmu)
 void PPU::tick(uint32_t cycles)
 {
 	uint8_t status = mmu->read(LCD_STATUS);
-	uint8_t scanline = mmu->read(LY);
-	LCDMode mode, current = (LCDMode)(mmu->read(LCD_CONTROL) & 3);
-
-	uint8_t view_x = mmu->read(SCROLL_X);
-	uint8_t view_y = mmu->read(SCROLL_Y);
-
-	mmu->gb->view_area = sf::Rect<int>(view_x, view_y, 160, 144);
-
-	bool should_interupt = false;
-
-	if (!lcd_enabled()) { 
-		scanline_counter = 0;
-
-		status &= 0b11111100; // Clear mode bits
-		CPU::set_bit(status, 1, 0); // Enter V-Blank because lcd is disabled
-
-		mmu->write(LCD_STATUS, status);
+	
+	if (!lcd_enabled()) {
+		scanline_counter = 114;
 		mmu->write(LY, 0);
+		
+		status &= 252;
+		CPU::set_bit(status, 0, 1);
+		
+		mmu->write(LCD_STATUS, status);
 		return;
 	}
-	else
-		scanline_counter += cycles; // Each scanline takes some clock cycles to complete
 
-	if (scanline >= 0 && scanline <= 143) { // I am currently drawing a frame
+	uint8_t scanline = mmu->read(LY);
+	LCDMode currentmode = (LCDMode)(status & 0x3);
 
-		if (scanline_counter > 0 && scanline_counter <= 20) { // I am in OAM Search mode
-			mode = LCDMode::OAMSearch;
+	LCDMode mode = HBlank;
+	bool should_interupt = false;
 
-			CPU::set_bit(status, 0, 0);
-			CPU::set_bit(status, 1, 1);
-			should_interupt = CPU::get_bit(status, 5);
-		}
-		else if (scanline_counter > 20 && scanline_counter <= 63) { // I am in Pixel Transfer mode
-			mode = LCDMode::DataTrans;
-
-			CPU::set_bit(status, 0, 1);
-			CPU::set_bit(status, 1, 1);
-		}
-		else if (scanline_counter > 63 && scanline_counter <= 114) { // I am in H-Blank mode
-			mode = LCDMode::HBlank;
-
-			CPU::set_bit(status, 0, 0);
-			CPU::set_bit(status, 1, 0);
-			should_interupt = CPU::get_bit(status, 3);
-		}
-	}
-	else if (scanline >= 144) { // Entered V-blank
-		mode = LCDMode::VBlank;
-
+	if (scanline >= 144) {
+		mode = VBlank;
 		CPU::set_bit(status, 0, 1);
 		CPU::set_bit(status, 1, 0);
 		should_interupt = CPU::get_bit(status, 4);
 	}
+	else {
+		if (scanline_counter >= 94) {
+			mode = OAMSearch;
+			CPU::set_bit(status, 1, 1);
+			CPU::set_bit(status, 0, 0);
+			should_interupt = CPU::get_bit(status, 5);
+		}
+		else if (scanline_counter >= 51) {
+			mode = DataTrans;
+			CPU::set_bit(status, 1, 1);
+			CPU::set_bit(status, 0, 1);
+		}
+		else {
+			mode = HBlank;
+			CPU::set_bit(status, 1, 0);
+			CPU::set_bit(status, 0, 0);
+			should_interupt = CPU::get_bit(status, 3);
+		}
+	}
 
-	if (should_interupt && mode != current) // Generate LCD Interupt if I changed mode
+	if (should_interupt && (mode != currentmode))
 		mmu->gb->cpu.interupt(LCD_INTERUPT);
 
-	if (mmu->read(LY) == mmu->read(LYC)) {  // Coincidence interupt
+	if (scanline == mmu->read(LYC)) {
 		CPU::set_bit(status, 2, 1);
-
+		
 		if (CPU::get_bit(status, 6))
 			mmu->gb->cpu.interupt(LCD_INTERUPT);
 	}
-	else {
+	else
 		CPU::set_bit(status, 2, 0);
-	}
 
-	if (scanline_counter >= 114) { // Just finished a scanline ?
+	mmu->write(0xFF41, status);
 
-		scanline_counter = 0;
-		scanline++; // Increment scanline
+	if (lcd_enabled())
+		scanline_counter -= cycles;
+	else
+		return;
 
-		mmu->get(LY) = scanline;
+	if (scanline_counter <= 0) {
+		mmu->get(LY)++;
+		uint8_t scanline = mmu->read(LY);
 
-		if (scanline >= 0 && scanline <= 143)
-			draw_line();
-		else if (scanline == 144)
+		scanline_counter = 114;
+
+		if (scanline == 144 && lcd_enabled())
 			mmu->gb->cpu.interupt(VBLANK_INTERUPT);
-		else if (scanline >= 153)
-			mmu->write(LY, 0); // Reset scanline
+		else if (scanline > 153)
+			mmu->write(LY, 0);
+		else if (scanline < 144)
+			draw_line();
 	}
-
-	mmu->write(LCD_STATUS, status); // Set status
 }
 
 bool PPU::lcd_enabled()

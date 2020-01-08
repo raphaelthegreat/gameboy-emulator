@@ -10,7 +10,8 @@
 
 #include <cpu/timer.h>
 
-std::string to_hex(uint16_t n);
+std::string to_hex(uint16_t n, int d = 4);
+std::string to_hex_string(uint16_t num);
 
 #define BIND(x) std::bind(x, this)
 

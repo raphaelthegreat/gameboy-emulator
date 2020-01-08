@@ -2,6 +2,9 @@
 #include <SFML/Graphics.hpp>
 #include <gameboy.h>
 
+#include <imgui.h>
+#include <imgui-SFML.h>
+
 #include <string>
 #include <iostream>
 #include <chrono>
@@ -18,7 +21,7 @@ public:
 	virtual ~Window();
 
 	void update();
-	void render(sf::Sprite& texture);
+	void render();
 
 	double get_deltatime();
 	bool should_close();
@@ -33,6 +36,8 @@ public:
 	system_clock::time_point previous, now;
 	dmilliseconds delta_time;
 	
+	sf::Clock delta_clock;
+
 	int width, height;
 	int interval = 0;
 };

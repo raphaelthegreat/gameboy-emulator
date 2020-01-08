@@ -14,10 +14,19 @@ Window::Window(int _width, int _height, const std::string& name, GameBoy* _gb)
 	icon.loadFromFile("../assets/icon.png");
 
 	window->setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
+
+	ImGui::SFML::Init(*window);
+
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 }
 
 Window::~Window()
 {
+	ImGui::SFML::Shutdown();
 }
 
 void Window::update()
@@ -25,6 +34,8 @@ void Window::update()
 	sf::Event event;
 	while (window->pollEvent(event))
 	{
+		ImGui::SFML::ProcessEvent(event);
+		
 		// Request for closing the window
 		if (event.type == sf::Event::Closed)
 			window->close();
@@ -54,6 +65,8 @@ void Window::update()
 	delta_time = duration_cast<dmilliseconds>(diff);
 	previous = now;
 
+	ImGui::SFML::Update(*window, delta_clock.restart());
+
 	if (interval >= 100) {
 		std::string title = "Gameboy Emualator FPS: " + std::to_string((int)(1000.0f / get_deltatime()));
 		window->setTitle(title);
@@ -63,10 +76,10 @@ void Window::update()
 	interval++;
 }
 
-void Window::render(sf::Sprite& viewport)
+void Window::render()
 {
 	window->clear(sf::Color::Black);
-	window->draw(viewport);
+	ImGui::SFML::Render(*window);
 	window->display();
 }
 
