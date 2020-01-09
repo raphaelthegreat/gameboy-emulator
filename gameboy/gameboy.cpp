@@ -2,10 +2,10 @@
 #include <sstream>
 #include <thread>
 #include <iomanip>
+#include <logger.h>
+#include <imgui/imgui_textcolor.h>
 
-const char* title() { return "File Dialog"; }
-
-GameBoy::GameBoy() : cpu(&mmu), file(title)
+GameBoy::GameBoy() : cpu(&mmu)
 {
     mmu.gb = this;
     
@@ -19,7 +19,7 @@ GameBoy::GameBoy() : cpu(&mmu), file(title)
 
 void GameBoy::load_rom(const std::string& file)
 {
-    mmu.cartridge = std::make_shared<Cartridge>();
+    mmu.cartridge = std::make_shared<Cartridge>(&mmu);
     mmu.cartridge->load_rom(file);
 }
 
@@ -38,43 +38,85 @@ void GameBoy::boot(const std::string& boot)
 
 void GameBoy::cpu_stats()
 {
-	ImGui::Begin("CPU-Info");
-	ImGui::Text("N: %d Z: %d H: %d C: %d",
-		cpu.get_flag(N),
-		cpu.get_flag(Z),
-		cpu.get_flag(H),
-		cpu.get_flag(C));
+    bool n = cpu.get_flag(N), z = cpu.get_flag(Z), 
+         h = cpu.get_flag(H), c = cpu.get_flag(C);
+    
+    ImGui::Begin("CPU-Info");
+    
+    ImVec2 size = ImGui::GetWindowSize();
 
-	ImGui::Text("A: %d", cpu.af.h);
-	ImGui::Text("B: %d C: %d", cpu.bc.h, cpu.bc.l);
-	ImGui::Text("D: %d E: %d", cpu.de.h, cpu.de.l);
-	ImGui::Text("H: %d L: %d", cpu.hl.h, cpu.hl.l);
-	ImGui::Text("PC: %s", to_hex(cpu.pc).c_str());
-	ImGui::Text("Stack Pointer: %s", to_hex(cpu.sp).c_str());
-	ImGui::Text("Opcode: %s", to_hex(cpu.opcode).c_str());
-	ImGui::NewLine();
-	ImGui::Text("Instuction: %s", cpu.lookup[cpu.opcode].name.c_str());
-	ImGui::End();
+    NEWLINE;
+    std::string dashes = std::string(12, '-');
+    ImGui::Text("    %s %s %s", dashes.c_str(), "Flags", dashes.c_str());
+
+    NEWLINE;
+    ImGui::Text("       N:"); NO_NEWLINE;
+    ImGui::TextAnsiColored(n ? YELLOW : WHITE, "%d", n); NO_NEWLINE;
+    ImGui::Text("   Z:"); NO_NEWLINE;
+    ImGui::TextAnsiColored(z ? YELLOW : WHITE, "%d", z); NO_NEWLINE;
+    ImGui::Text("   H:"); NO_NEWLINE;
+    ImGui::TextAnsiColored(h ? YELLOW : WHITE, "%d", h); NO_NEWLINE;
+    ImGui::Text("   C:"); NO_NEWLINE;
+    ImGui::TextAnsiColored(c ? YELLOW : WHITE, "%d", c); NEWLINE;
+    
+    ImGui::Text("   %s %s %s", dashes.c_str(), "Registers", dashes.c_str());
+
+    NEWLINE;
+	ImGui::Text("       B: %s      C: %s", to_hex_string(cpu.bc.h).c_str(), to_hex_string(cpu.bc.l).c_str());
+	ImGui::Text("       D: %s      E: %s", to_hex_string(cpu.de.h).c_str(), to_hex_string(cpu.de.l).c_str());
+	ImGui::Text("       H: %s      L: %s", to_hex_string(cpu.hl.h).c_str(), to_hex_string(cpu.hl.l).c_str());
+    ImGui::Text("       A: %s      F: %s", to_hex_string(cpu.af.h).c_str(), to_hex_string(cpu.af.l).c_str());
+    
+    NEWLINE;
+    ImGui::Text("       Program Counter: %s", to_hex_string(cpu.pc).c_str());
+	ImGui::Text("       Stack Pointer:   %s", to_hex_string(cpu.sp).c_str());
+
+    NEWLINE;
+    ImGui::Text("       Opcode:   %s ", to_hex_string(cpu.opcode).c_str());
+	ImGui::Text("       Mnemonic: %s", cpu.lookup[cpu.opcode].name.c_str());
+	
+    ImGui::End();
 }
 
 void GameBoy::memory_map(uint16_t from, uint16_t to, uint8_t step)
 {
     ImGui::Begin("Memory");
 
+    ImVec2 size = ImGui::GetWindowSize();
+
     if (mmu.read(BOOTING)) {
+        ImGui::Text("Address");
+        ImGui::Text("%s", std::string(40, '-').c_str());
+        
         std::string line = "";
-        line += "0x0000 | ";
         for (int i = from; i <= to; i++) {
-            if ((i - from) % step == 0) {
+            if (i == 0) {
+                line += "0x0000 | ";
+            }
+            else if ((i - from) % step == 0) {
                 ImGui::Text(line.c_str());
                 line.clear();
-                line += "0x" + to_hex_string(i) + " | ";
+                line += to_hex_string(i) + " | ";
             }
 
-            line += "0x" + to_hex_string(mmu.read(i)) + ' ';
+            line += to_hex_string(mmu.read(i)) + ' ';
         }
     }
 
+    ImGui::End();
+}
+
+void GameBoy::display_viewport()
+{
+    ImGui::Begin("Viewport");
+
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    uint32_t tex = viewport.getTexture()->getNativeHandle();
+
+    ImVec2 size = ImGui::GetWindowSize();
+    size.y -= 46;
+
+    ImGui::Image(tex, size, ImVec2(0, 0), ImVec2(0.625, 0.5625));
     ImGui::End();
 }
 
@@ -109,13 +151,18 @@ void GameBoy::dockspace(std::function<void()> menu_func)
     ImGui::End();
 }
 
+void GameBoy::log()
+{
+    logger.draw();
+}
+
 void GameBoy::menu_function()
 {
     ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
     
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Load Rom", "")) {
+            if (ImGui::MenuItem("Load Rom", "  Loads rom file")) {
                 file_dialog_opened = true;
             }
             ImGui::EndMenu();
@@ -124,15 +171,17 @@ void GameBoy::menu_function()
     }
 
     if (file_dialog_opened) {
-        file.openDialog();
+        file.open_dialog();
         bool done = file.draw();
 
         file_dialog_opened = !done;
         if (file_dialog_opened == false) {
-            load_rom(file.selected()[0]);
-            
-            rom_loaded = true;
-            if (mmu.read(BOOTING)) cpu.reset();
+            if (!file.selected().empty()) {
+                load_rom(file.selected()[0]);
+
+                rom_loaded = true;
+                if (mmu.read(BOOTING)) cpu.reset();
+            }
         }
     }
 }
@@ -141,29 +190,18 @@ void GameBoy::tick()
 {
     uint32_t current_cycle = 0;
 
-    while (current_cycle < cycles_per_frame) {
-        uint32_t cycle = cpu.tick();
-        current_cycle += cycle;
+    if (rom_loaded) {
 
-        cpu.update_timers(cycle);
-        ppu.tick(cycle);
-        
-        cpu.handle_interupts();
+        while (current_cycle < cycles_per_frame) {
+            uint32_t cycle = cpu.tick();
+            current_cycle += cycle;
+
+            cpu.update_timers(cycle);
+            ppu.tick(cycle);
+
+            cpu.handle_interupts();
+        }
     }
-    
+
     ppu.blit_pixels();
-}
-
-void GameBoy::display_viewport()
-{
-    ImGui::Begin("Viewport");
-
-    ImVec2 pos = ImGui::GetCursorScreenPos();
-    uint32_t tex = viewport.getTexture()->getNativeHandle();
-
-    ImVec2 size = ImGui::GetWindowSize();
-    size.y -= 34.5;
-    
-    ImGui::Image(tex, size, ImVec2(0, 0), ImVec2(0.625, 0.5625));
-    ImGui::End();
 }

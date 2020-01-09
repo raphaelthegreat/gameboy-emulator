@@ -42,9 +42,10 @@ void MMU::write(uint16_t address, uint8_t data)
 {
 	LCDMode mode = gb->ppu.mode;
 
-	if (address >= 0xFEA0 && address < 0xFEFF) return;
-
-	if (address < 0x8000 || (address >= 0xA000 && address <= 0xBFFF)) {
+	if (address < 0x8000) {
+		cartridge->write(address, data);
+	}
+	else if (address >= 0xA000 && address <= 0xBFFF) {
 		cartridge->write(address, data);
 	}
 	else if (address == DMA) {

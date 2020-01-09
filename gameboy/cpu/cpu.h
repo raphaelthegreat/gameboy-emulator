@@ -11,7 +11,7 @@
 #include <cpu/timer.h>
 
 std::string to_hex(uint16_t n, int d = 4);
-std::string to_hex_string(uint16_t num);
+std::string to_hex_string(uint16_t num, int d = 4);
 
 #define BIND(x) std::bind(x, this)
 
@@ -130,7 +130,7 @@ public:
 	uint16_t opcode;
 
 	Register af, bc, de, hl;
-	uint16_t pc, sp;
+	uint16_t pc = 0, sp = 0;
 
 	uint32_t cycles = 0;
 

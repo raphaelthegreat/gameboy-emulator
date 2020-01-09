@@ -13,7 +13,7 @@ std::string to_hex(uint16_t n, int d)
     return "0x" + ss.str();
 }
 
-std::string to_hex_string(uint16_t num)
+std::string to_hex_string(uint16_t num, int d)
 {
     static const char digits[513] =
         "000102030405060708090A0B0C0D0E0F"
@@ -51,14 +51,13 @@ std::string to_hex_string(uint16_t num)
         i -= 1;
     }
 
-    std::string s = std::string(4, ' ');
+    std::string s = std::string(d, ' ');
 
-    s[0] = buff[4];
-    s[1] = buff[5];
-    s[2] = buff[6];
-    s[3] = buff[7];
+    for (int i = 0; i < d; i++) {
+        s[i] = buff[4 + i];
+    }
 
-    return s;
+    return "0x" + s;
 }
 
 Register& Register::operator=(const uint16_t& reg)
@@ -103,8 +102,11 @@ CPU::CPU(MMU* _mmu) : mmu(_mmu),
 {
     std::cout.sync_with_stdio(false);
 
+    af.h = 0; bc.h = 0; de.h = 0; hl.h = 0;
+    af.l = 0; bc.l = 0; de.l = 0; hl.l = 0;
+
     this->register_opcodes();
-    //out.open("log.txt", std::ofstream::out | std::ofstream::app);
+    out.open("log.txt", std::ofstream::out | std::ofstream::app);
 }
 
 void CPU::set_bit(uint8_t& num, int b, bool v)
@@ -169,12 +171,12 @@ void CPU::reset()
 
 uint32_t CPU::tick()
 {    
-    /*if (sf::Keyboard::isKeyPressed(sf::Keyboard::L)) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::L)) {
         out << to_hex(pc) << " | " << get_flag(Z) << ' ' << get_flag(N);
         out << ' ' << get_flag(H) << ' ' << get_flag(C) << " AF: ";
         out << to_hex(af.get()) << " BC: " << to_hex(bc.get());
         out << " DE: " << to_hex(de.get()) << " HL: " << to_hex(hl.get()) << ' ' << (int)mmu->read(LY) <<'\n';
-    }*/
+    }
 
     if (halted) return 1;
     if (pc == 0x00FA) pc = 0x00FC; // Bypass nintendo check

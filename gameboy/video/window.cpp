@@ -7,21 +7,29 @@ Window::Window(int _width, int _height, const std::string& name, GameBoy* _gb)
 	width = _width; height = _height;
 	gb = _gb;
 
+	auto fullscreen = sf::VideoMode::getFullscreenModes();
+
 	window = std::make_unique<sf::RenderWindow>(sf::VideoMode(width, height), name);
 	window->setFramerateLimit(60);
+
+	ShowWindow(window->getSystemHandle(), SW_SHOWMAXIMIZED);
 
 	sf::Image icon;
 	icon.loadFromFile("../assets/icon.png");
 
 	window->setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
 
-	ImGui::SFML::Init(*window);
+	ImGui::SFML::Init(*window, false);
 
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
 	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+	io.Fonts->Clear();
+	io.Fonts->AddFontFromFileTTF("../assets/consolas.ttf", 24.f);
+
+	ImGui::SFML::UpdateFontTexture();
 }
 
 Window::~Window()
@@ -66,6 +74,8 @@ void Window::update()
 	previous = now;
 
 	ImGui::SFML::Update(*window, delta_clock.restart());
+	ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+	ImGui::PopFont();
 
 	if (interval >= 100) {
 		std::string title = "Gameboy Emualator FPS: " + std::to_string((int)(1000.0f / get_deltatime()));
@@ -74,6 +84,7 @@ void Window::update()
 	}
 
 	interval++;
+
 }
 
 void Window::render()

@@ -1,4 +1,5 @@
 #include "cartridge.h"
+#include <gameboy.h>
 
 Cartridge::~Cartridge()
 {
@@ -14,22 +15,37 @@ bool Cartridge::load_rom(const std::string& path)
     fread(data, 1, 0x200000, in);
     fclose(in);
 
+    Logger& log = mmu->gb->logger;
+
+    char title[16]; std::copy(data + 0x0134, data + 0x0144, title);
+    log.log("%s: %s\n", "Rom Title", title);
+
     uint8_t banking_type = data[0x147];
     if (banking_type == 0) banking = Banking::None;
     else if (banking_type == 1 || banking_type == 2 || banking_type == 3) banking = Banking::MBC1;
 
-    std::cout << "Banking Type: " << (int)banking_type << '\n';
+    log.log("%s: %d\n", "Banking Type", banking_type);
 
     uint8_t ram_type = data[0x149];
     if (ram_type == 0) ram_size = 0;
     else if (ram_type == 1) ram_size = 2048;
     else if (ram_type == 2) ram_size = 8192;
 
-    if (banking == Banking::None) mbc = new MBCNone(this);
-    if (banking == Banking::MBC1) mbc = new MBC1(this);
+    log.log("%s: %d\n", "Ram Size", ram_size);
+
+    const char* region = "Japan";
+    if (data[0x014A]) region = "Global";
+
+    log.log("%s: %s\n", "Region", region);
+
+    if (banking == Banking::None) {
+        mbc = new MBCNone(this);
+    }
+    if (banking == Banking::MBC1) {
+        mbc = new MBC1(this);
+    }
 
     loaded = true;
-
     return true;
 }
 
@@ -41,11 +57,11 @@ uint8_t Cartridge::read(uint16_t addr)
         value = data[addr];
     }
     else if (addr >= 0x4000 && addr <= 0x7FFF) {
-        uint16_t address = (addr - 0x4000) + (current_rom_bank * 0x4000);
+        uint32_t address = (addr - 0x4000) + (current_rom_bank * 0x4000);
         value = data[address];
     }
     else if (addr >= 0xA000 && addr <= 0xBFFF) {
-        uint16_t address = addr - 0xA000 + (current_ram_bank * 0x2000);
+        uint32_t address = addr - 0xA000 + (current_ram_bank * 0x2000);
         value = memory[address];
     }
 
@@ -60,11 +76,11 @@ uint8_t& Cartridge::get(uint16_t addr)
         value = data[addr];
     }
     else if (addr >= 0x4000 && addr <= 0x7FFF) {
-        uint16_t address = addr - 0x4000;
+        uint32_t address = addr - 0x4000;
         value = data[address + (current_rom_bank * 0x4000)];
     }
     else if (addr >= 0xA000 && addr <= 0xBFFF) {
-        uint16_t address = addr - 0xA000;
+        uint32_t address = addr - 0xA000;
         value = memory[address + (current_ram_bank * 0x2000)];
     }
 
@@ -77,7 +93,7 @@ void Cartridge::write(uint16_t addr, uint8_t data)
         mbc->handle_banking(addr, data);   
     else if (addr >= 0xA000 && addr < 0xC000) {
         if (memory_enabled) {
-            uint16_t address = addr - 0xA000;
+            uint32_t address = addr - 0xA000;
             memory[address + (current_ram_bank * 0x2000)] = data;
         }
     }

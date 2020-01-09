@@ -19,9 +19,10 @@ enum class Banking{
 	None
 };
 
+class MMU;
 class Cartridge {
 public:
-	Cartridge() = default;
+	Cartridge(MMU* _mmu) : mmu(_mmu) {}
 	~Cartridge();
 
 	bool load_rom(const std::string& file);
@@ -34,6 +35,7 @@ public:
 public:
 	Banking banking = Banking::None;
 	MBC* mbc;
+	MMU* mmu;
 
 	uint8_t current_rom_bank = 1;
 	uint8_t current_ram_bank = 0;

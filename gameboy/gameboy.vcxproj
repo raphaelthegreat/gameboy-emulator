@@ -107,6 +107,7 @@
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_file.cpp" />
     <ClCompile Include="imgui\imgui_widgets.cpp" />
+    <ClCompile Include="logger.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="video\ppu.cpp" />
     <ClCompile Include="video\window.cpp" />
@@ -115,11 +116,12 @@
     <ClInclude Include="cartridge\cartridge.h" />
     <ClInclude Include="cartridge\joypad.h" />
     <ClInclude Include="cartridge\mbc.h" />
-    <ClInclude Include="cpu\bios.h" />
     <ClInclude Include="cpu\mmu.h" />
     <ClInclude Include="cpu\cpu.h" />
     <ClInclude Include="cpu\timer.h" />
     <ClInclude Include="gameboy.h" />
+    <ClInclude Include="imgui\imgui_textcolor.h" />
+    <ClInclude Include="logger.h" />
     <ClInclude Include="video\ppu.h" />
     <ClInclude Include="video\window.h" />
   </ItemGroup>
