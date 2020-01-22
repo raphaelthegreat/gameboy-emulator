@@ -9,11 +9,6 @@
 #include <iostream>
 #include <chrono>
 
-#ifdef _WIN32
-#include <Windows.h>
-#include <WinUser.h>
-#endif
-
 using std::unique_ptr;
 
 using namespace std::chrono;

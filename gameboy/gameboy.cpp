@@ -5,6 +5,8 @@
 #include <logger.h>
 #include <imgui/imgui_textcolor.h>
 
+std::vector<std::string> GameBoy::hex_str;
+
 GameBoy::GameBoy() : cpu(&mmu)
 {
     mmu.gb = this;
@@ -15,12 +17,16 @@ GameBoy::GameBoy() : cpu(&mmu)
     
     viewport = sf::Sprite(ppu.frame_buffer);
     viewport.setScale(3.5, 3.5);
+
+    for (int i = 0; i <= 0xFFFF; i++) hex_str.push_back(to_hex_string(i));
 }
 
 void GameBoy::load_rom(const std::string& file)
 {
     mmu.cartridge = std::make_shared<Cartridge>(&mmu);
     mmu.cartridge->load_rom(file);
+
+    rom_loaded = true;
 }
 
 void GameBoy::boot(const std::string& boot)
@@ -62,17 +68,17 @@ void GameBoy::cpu_stats()
     ImGui::Text("   %s %s %s", dashes.c_str(), "Registers", dashes.c_str());
 
     NEWLINE;
-	ImGui::Text("       B: %s      C: %s", to_hex_string(cpu.bc.h).c_str(), to_hex_string(cpu.bc.l).c_str());
-	ImGui::Text("       D: %s      E: %s", to_hex_string(cpu.de.h).c_str(), to_hex_string(cpu.de.l).c_str());
-	ImGui::Text("       H: %s      L: %s", to_hex_string(cpu.hl.h).c_str(), to_hex_string(cpu.hl.l).c_str());
-    ImGui::Text("       A: %s      F: %s", to_hex_string(cpu.af.h).c_str(), to_hex_string(cpu.af.l).c_str());
+	ImGui::Text("       B: %s      C: %s", hex_str[cpu.bc.h].c_str(), hex_str[cpu.bc.l].c_str());
+	ImGui::Text("       D: %s      E: %s", hex_str[cpu.de.h].c_str(), hex_str[cpu.de.l].c_str());
+	ImGui::Text("       H: %s      L: %s", hex_str[cpu.hl.h].c_str(), hex_str[cpu.hl.l].c_str());
+    ImGui::Text("       A: %s      F: %s", hex_str[cpu.af.h].c_str(), hex_str[cpu.af.l].c_str());
     
     NEWLINE;
-    ImGui::Text("       Program Counter: %s", to_hex_string(cpu.pc).c_str());
-	ImGui::Text("       Stack Pointer:   %s", to_hex_string(cpu.sp).c_str());
+    ImGui::Text("       Program Counter: %s", hex_str[cpu.pc].c_str());
+	ImGui::Text("       Stack Pointer:   %s", hex_str[cpu.sp].c_str());
 
     NEWLINE;
-    ImGui::Text("       Opcode:   %s ", to_hex_string(cpu.opcode).c_str());
+    ImGui::Text("       Opcode:   %s ", hex_str[cpu.opcode].c_str());
 	ImGui::Text("       Mnemonic: %s", cpu.lookup[cpu.opcode].name.c_str());
 	
     ImGui::End();
@@ -96,10 +102,10 @@ void GameBoy::memory_map(uint16_t from, uint16_t to, uint8_t step)
             else if ((i - from) % step == 0) {
                 ImGui::Text(line.c_str());
                 line.clear();
-                line += to_hex_string(i) + " | ";
+                line += hex_str[i] + " | ";
             }
 
-            line += to_hex_string(mmu.read(i)) + ' ';
+            line += hex_str[mmu.read(i)] + ' ';
         }
     }
 

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <vector>
 #include <functional>
+#include <string>
 #include <imgui.h>
 #include <imgui_file.h>
 
@@ -42,7 +43,7 @@ public:
 
 public:
 	const int cycles_per_frame = 17556;
-	const double fps = 59.73;
+	const double fps = 60;
 	const double frame_interval = 1000.0 / fps;
 
 public:
@@ -55,6 +56,7 @@ public:
 	FileDialog file;
 	Logger logger;
 
+	static std::vector<std::string> hex_str;
 	sf::Sprite viewport;
 	sf::IntRect view_area;
 	uint32_t cycles = 0;
